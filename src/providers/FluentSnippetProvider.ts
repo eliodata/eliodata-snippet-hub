@@ -67,6 +67,12 @@ export class FluentSnippetProvider implements vscode.Disposable, SnippetPluginPr
             const response = await this.apiConnector.getFluentSnippets();
             
             if (response && response.snippets) {
+                // Vérifier que response.snippets est bien un tableau
+                if (!Array.isArray(response.snippets)) {
+                    console.error('FluentSnippets API response.snippets is not an array:', response.snippets);
+                    throw new Error('La réponse de l\'API FluentSnippets n\'est pas un tableau de snippets');
+                }
+                
                 for (const snippetData of response.snippets) {
                     const apiSnippet = this.parseFluentSnippetFromApi(snippetData);
                     if (apiSnippet) {

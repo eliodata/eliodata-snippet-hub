@@ -9,7 +9,6 @@ export async function activate(context: vscode.ExtensionContext) {
     let config = await configManager.getActiveConnection();
 
     if (!config) {
-        // Vérifier s'il y a des connexions existantes
         const connections = await configManager.getAllConnections();
         if (connections.length > 0) {
             config = await configManager.manageConnections();
@@ -22,15 +21,15 @@ export async function activate(context: vscode.ExtensionContext) {
                 await configManager.setActiveConnection(config.id);
             }
         }
-        
+
         if (!config) {
-            return; // User cancelled the configuration
+            return;
         }
     }
 
     let provider = await createSnippetProvider(context, config);
     if (!provider) {
-        return; // Could not create a provider
+        return;
     }
 
     await provider.initialize();
@@ -40,7 +39,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const controller = new SnippetController(provider, snippetTreeDataProvider, context);
 
+    // === Core commands ===
     context.subscriptions.push(
+        vscode.commands.registerCommand('wordpressSnippets.list', () => snippetTreeDataProvider.refresh()),
+        vscode.commands.registerCommand('wordpressSnippets.create', async () => {
+            await controller.createSnippet();
+            snippetTreeDataProvider.refresh();
+        }),
         vscode.commands.registerCommand('wordpressSnippets.refresh', () => snippetTreeDataProvider.refresh()),
         vscode.commands.registerCommand('wordpressSnippets.createSnippet', async () => {
             await controller.createSnippet();
@@ -59,45 +64,58 @@ export async function activate(context: vscode.ExtensionContext) {
             await controller.toggleSnippet(item);
             snippetTreeDataProvider.refresh();
         }),
+
+        // === Sort & Filter ===
         vscode.commands.registerCommand('wordpressSnippets.sortAsc', () => snippetTreeDataProvider.setSortOrder('asc')),
         vscode.commands.registerCommand('wordpressSnippets.sortDesc', () => snippetTreeDataProvider.setSortOrder('desc')),
         vscode.commands.registerCommand('wordpressSnippets.filterActive', () => snippetTreeDataProvider.setFilter('active')),
         vscode.commands.registerCommand('wordpressSnippets.filterInactive', () => snippetTreeDataProvider.setFilter('inactive')),
         vscode.commands.registerCommand('wordpressSnippets.filterAll', () => snippetTreeDataProvider.setFilter('all')),
+
+        // === Search ===
         vscode.commands.registerCommand('wordpressSnippets.searchSnippets', async () => {
             const currentTerm = snippetTreeDataProvider.getSearchTerm();
-            const searchTerm = await vscode.window.showInputBox({ 
-                prompt: 'Rechercher des snippets (par nom, description, code ou ID)', 
+            const searchTerm = await vscode.window.showInputBox({
+                prompt: 'Rechercher des snippets (par nom, description, code ou ID)',
                 value: currentTerm,
                 placeHolder: 'Tapez votre recherche ou un ID de snippet...'
             });
             if (searchTerm !== undefined) {
                 snippetTreeDataProvider.setSearchTerm(searchTerm);
-                
-                // Attendre un peu pour que le tree view se mette à jour
                 setTimeout(() => {
                     const statusMessage = snippetTreeDataProvider.getStatusMessage();
                     if (statusMessage) {
                         vscode.window.setStatusBarMessage(`🔍 ${statusMessage}`, 5000);
-                        vscode.window.showInformationMessage(statusMessage);
                     } else if (searchTerm.trim() === '') {
-                        const clearMessage = 'Recherche effacée';
-                        vscode.window.setStatusBarMessage(`🔍 ${clearMessage}`, 2000);
-                        vscode.window.showInformationMessage(clearMessage);
-                    } else {
-                        vscode.window.showInformationMessage('Aucun résultat trouvé');
+                        vscode.window.setStatusBarMessage('🔍 Recherche effacée', 2000);
                     }
-                }, 1500);
+                }, 500);
             }
         }),
         vscode.commands.registerCommand('wordpressSnippets.clearSearch', () => {
             snippetTreeDataProvider.clearSearch();
-            const clearMessage = 'Recherche effacée';
-            vscode.window.setStatusBarMessage(`🔍 ${clearMessage}`, 2000);
-            vscode.window.showInformationMessage(clearMessage);
+            vscode.window.setStatusBarMessage('🔍 Recherche effacée', 2000);
         }),
+
+        // === Snippet metadata management ===
+        vscode.commands.registerCommand('wordpressSnippets.renameSnippet', async (item) => {
+            await controller.renameSnippet(item);
+            snippetTreeDataProvider.refresh();
+        }),
+        vscode.commands.registerCommand('wordpressSnippets.editDescription', async (item) => {
+            await controller.editDescription(item);
+            snippetTreeDataProvider.refresh();
+        }),
+        vscode.commands.registerCommand('wordpressSnippets.editTags', async (item) => {
+            await controller.editTags(item);
+            snippetTreeDataProvider.refresh();
+        }),
+
+        // === Other commands ===
         vscode.commands.registerCommand('wordpressSnippets.analyzeSnippet', () => controller.analyzeSnippet()),
         vscode.commands.registerCommand('wordpressSnippets.restoreBackup', (item) => controller.restoreBackup(item)),
+
+        // === Plugin & connection management ===
         vscode.commands.registerCommand('wordpress-snippets.switchPlugin', async () => {
             const newConfig = await configManager.switchPlugin();
             if (newConfig) {
@@ -128,7 +146,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 vscode.window.showInformationMessage('Aucune connexion configurée.');
                 return;
             }
-            
+
             const activeConnection = await configManager.getActiveConnection();
             const connectionOptions = connections.map(conn => ({
                 label: conn.name || conn.siteUrl,
@@ -136,11 +154,11 @@ export async function activate(context: vscode.ExtensionContext) {
                 detail: activeConnection?.id === conn.id ? '🟢 Connexion active' : '',
                 connection: conn
             }));
-            
+
             const selected = await vscode.window.showQuickPick(connectionOptions, {
                 placeHolder: 'Choisir la connexion WordPress active'
             });
-            
+
             if (selected && selected.connection.id !== activeConnection?.id) {
                 const newConfig = await configManager.setActiveConnection(selected.connection.id);
                 if (newConfig) {
@@ -157,6 +175,7 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // === Auto-save on file change ===
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (document: vscode.TextDocument) => {
             if (provider && provider.isSnippetFile(document.uri.fsPath)) {
@@ -164,8 +183,6 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         })
     );
-
-
 }
 
 export function deactivate() {}

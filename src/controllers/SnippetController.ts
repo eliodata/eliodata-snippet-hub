@@ -8,26 +8,22 @@ export class SnippetController {
     private configManager: ConfigManager;
 
     constructor(
-        private snippetProvider: SnippetPluginProvider, 
-        private snippetTreeDataProvider: SnippetTreeDataProvider, 
+        private snippetProvider: SnippetPluginProvider,
+        private snippetTreeDataProvider: SnippetTreeDataProvider,
         context: vscode.ExtensionContext
     ) {
         this.configManager = new ConfigManager(context);
     }
 
-    public async listSnippets() {
-        // Cette méthode n'est plus nécessaire car la liste est affichée dans la vue arborescente
-    }
-
     public async createSnippet() {
-        const name = await vscode.window.showInputBox({ prompt: 'Snippet Name' });
-        if (!name) return;
+        const name = await vscode.window.showInputBox({ prompt: 'Nom du snippet' });
+        if (!name) { return; }
 
-        const description = await vscode.window.showInputBox({ prompt: 'Snippet Description' });
-        if (description === undefined) return;
+        const description = await vscode.window.showInputBox({ prompt: 'Description du snippet' });
+        if (description === undefined) { return; }
 
-        const content = await vscode.window.showInputBox({ prompt: 'Snippet Content' });
-        if (!content) return;
+        const content = await vscode.window.showInputBox({ prompt: 'Contenu du snippet (code PHP)' });
+        if (!content) { return; }
 
         await this.snippetProvider.createSnippet({ name, code: content, description });
     }
@@ -44,8 +40,10 @@ export class SnippetController {
             }
         }
 
-        const confirm = await vscode.window.showWarningMessage(`Are you sure you want to delete the snippet "${snippet.name}"?`, { modal: true }, 'Yes');
-        if (confirm === 'Yes') {
+        const confirm = await vscode.window.showWarningMessage(
+            `Supprimer le snippet "${snippet.name}" ?`, { modal: true }, 'Oui'
+        );
+        if (confirm === 'Oui') {
             await this.snippetProvider.deleteSnippet(snippet.id);
         }
     }
@@ -53,62 +51,139 @@ export class SnippetController {
     public async reconfigure() {
         const newConfig = await this.configManager.manageConnections();
         if (newConfig) {
-            // The provider will be updated with the new config, so we just need to refresh the tree.
-            vscode.commands.executeCommand('wordpress-snippets.refreshSnippets');
+            vscode.commands.executeCommand('wordpressSnippets.refresh');
         } else {
             vscode.window.showInformationMessage('Configuration annulée.');
         }
     }
-    
+
     public async switchPlugin() {
         const newConfig = await this.configManager.switchPlugin();
         if (newConfig) {
-            vscode.commands.executeCommand('wordpress-snippets.refreshSnippets');
+            vscode.commands.executeCommand('wordpressSnippets.refresh');
         } else {
             vscode.window.showInformationMessage('Changement de plugin annulé.');
         }
     }
 
     public async openSnippet(snippet: Snippet) {
-        if (!snippet) {
-            return;
-        }
-        const { id } = snippet;
+        if (!snippet) { return; }
 
-        const filePath = this.snippetProvider.getSnippetCachePath(id);
-        console.log(`Attempting to open snippet ${id} at path: ${filePath}`);
-        
+        const filePath = this.snippetProvider.getSnippetCachePath(snippet.id);
+
         try {
-            // First check if file exists
             const fs = require('fs').promises;
             await fs.access(filePath);
-            
             const doc = await vscode.workspace.openTextDocument(filePath);
             await vscode.window.showTextDocument(doc, { preview: false });
         } catch (error: any) {
-            console.error(`Error opening snippet ${id}:`, error);
-            
             // Try to fetch the snippet and cache it
             try {
-                const fetchedSnippet = await this.snippetProvider.getSnippet(id);
+                const fetchedSnippet = await this.snippetProvider.getSnippet(snippet.id);
                 if (fetchedSnippet) {
-                    // Try opening again after caching
                     const doc = await vscode.workspace.openTextDocument(filePath);
                     await vscode.window.showTextDocument(doc, { preview: false });
                 } else {
-                    vscode.window.showErrorMessage(`Snippet ${id} not found on server.`);
+                    vscode.window.showErrorMessage(`Snippet ${snippet.id} introuvable sur le serveur.`);
                 }
             } catch (fetchError: any) {
-                vscode.window.showErrorMessage(`Could not open file for snippet ${id}. Error: ${error.message}`);
+                vscode.window.showErrorMessage(`Impossible d'ouvrir le snippet ${snippet.id}: ${fetchError.message}`);
             }
         }
     }
 
     public async toggleSnippet(snippet: Snippet) {
-        if (!snippet) {
+        if (!snippet) { return; }
+        await this.snippetTreeDataProvider.toggleSnippet(snippet);
+    }
+
+    // === Metadata management commands ===
+
+    public async renameSnippet(item?: any) {
+        const snippet = item?.snippet || item;
+        if (!snippet || !snippet.id) {
+            vscode.window.showWarningMessage('Aucun snippet sélectionné.');
             return;
         }
-        await this.snippetTreeDataProvider.toggleSnippet(snippet);
+
+        const newName = await vscode.window.showInputBox({
+            prompt: 'Nouveau nom du snippet',
+            value: snippet.name,
+            placeHolder: 'Entrez le nouveau nom...',
+            validateInput: (v) => v.trim() ? null : 'Le nom ne peut pas être vide'
+        });
+
+        if (newName && newName !== snippet.name) {
+            if ('renameSnippet' in this.snippetProvider) {
+                const provider = this.snippetProvider as any;
+                const success = await provider.renameSnippet(snippet.id, newName);
+                if (success) {
+                    vscode.window.showInformationMessage(`Snippet renommé: "${newName}"`);
+                }
+            } else {
+                vscode.window.showWarningMessage('Le renommage n\'est pas supporté pour ce type de plugin.');
+            }
+        }
+    }
+
+    public async editDescription(item?: any) {
+        const snippet = item?.snippet || item;
+        if (!snippet || !snippet.id) {
+            vscode.window.showWarningMessage('Aucun snippet sélectionné.');
+            return;
+        }
+
+        // Fetch fresh data from server
+        const freshSnippet = await this.snippetProvider.getSnippet(snippet.id);
+        const currentDesc = freshSnippet?.description || snippet.description || '';
+
+        const newDescription = await vscode.window.showInputBox({
+            prompt: 'Description du snippet',
+            value: currentDesc,
+            placeHolder: 'Entrez la description...'
+        });
+
+        if (newDescription !== undefined && newDescription !== currentDesc) {
+            if ('updateDescription' in this.snippetProvider) {
+                const provider = this.snippetProvider as any;
+                const success = await provider.updateDescription(snippet.id, newDescription);
+                if (success) {
+                    vscode.window.showInformationMessage('Description mise à jour.');
+                }
+            } else {
+                vscode.window.showWarningMessage('La modification de description n\'est pas supportée pour ce type de plugin.');
+            }
+        }
+    }
+
+    public async editTags(item?: any) {
+        const snippet = item?.snippet || item;
+        if (!snippet || !snippet.id) {
+            vscode.window.showWarningMessage('Aucun snippet sélectionné.');
+            return;
+        }
+
+        // Fetch fresh data from server
+        const freshSnippet = await this.snippetProvider.getSnippet(snippet.id);
+        const currentTags = freshSnippet?.tags || snippet.tags || '';
+
+        const newTags = await vscode.window.showInputBox({
+            prompt: 'Tags/mots-clés du snippet (séparés par des virgules)',
+            value: currentTags,
+            placeHolder: 'woocommerce, checkout, panier...'
+        });
+
+        if (newTags !== undefined && newTags !== currentTags) {
+            if ('updateTags' in this.snippetProvider) {
+                const provider = this.snippetProvider as any;
+                const success = await provider.updateTags(snippet.id, newTags);
+                if (success) {
+                    vscode.window.showInformationMessage('Tags mis à jour.');
+                }
+            } else {
+                vscode.window.showWarningMessage('La modification des tags n\'est pas supportée pour ce type de plugin.');
+            }
+        }
     }
 
     public async restoreBackup(item?: any) {
@@ -116,38 +191,35 @@ export class SnippetController {
         if (item && item.snippet) {
             snippetId = item.snippet.id;
         } else {
-            const idStr = await vscode.window.showInputBox({ prompt: 'Enter the Snippet ID to restore' });
-            if (!idStr) return;
-            // Try to parse as number first, if it fails, use as string
+            const idStr = await vscode.window.showInputBox({ prompt: 'Entrez l\'ID du snippet à restaurer' });
+            if (!idStr) { return; }
             const numericId = parseInt(idStr, 10);
             snippetId = isNaN(numericId) ? idStr : numericId;
         }
 
         const backups = await this.snippetProvider.getBackups(snippetId);
         if (backups.length === 0) {
-            vscode.window.showInformationMessage('No backups found for this snippet.');
+            vscode.window.showInformationMessage('Aucune sauvegarde trouvée pour ce snippet.');
             return;
         }
 
         const selectedBackup = await vscode.window.showQuickPick(backups, {
-            placeHolder: 'Select a backup to restore',
+            placeHolder: 'Sélectionner une sauvegarde à restaurer',
         });
 
         if (selectedBackup) {
             const success = await this.snippetProvider.restoreBackup(snippetId, selectedBackup);
             if (success) {
-                vscode.window.showInformationMessage(`Snippet ${snippetId} restored from ${selectedBackup}.`);
-                // Refresh the snippet view and file content
+                vscode.window.showInformationMessage(`Snippet ${snippetId} restauré depuis ${selectedBackup}.`);
                 const snippet = await this.snippetProvider.getSnippet(snippetId);
                 if (snippet) {
                     await this.openSnippet(snippet);
                 }
             } else {
-                vscode.window.showErrorMessage('Failed to restore backup.');
+                vscode.window.showErrorMessage('Échec de la restauration.');
             }
         }
     }
-
 
     public async analyzeSnippet(id?: string | number) {
         let snippetId = id;
@@ -156,7 +228,6 @@ export class SnippetController {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
                 const text = editor.document.getText();
-                // Look for both numeric IDs and FS prefixed IDs
                 const numericMatch = text.match(/\*\s*Snippet ID:\s*(\d+)/);
                 const fsMatch = text.match(/\*\s*Snippet ID:\s*(FS\d+)/);
                 if (fsMatch && fsMatch[1]) {
@@ -168,9 +239,8 @@ export class SnippetController {
         }
 
         if (!snippetId) {
-            const idStr = await vscode.window.showInputBox({ prompt: 'Enter the ID of the snippet to analyze' });
+            const idStr = await vscode.window.showInputBox({ prompt: 'Entrez l\'ID du snippet à analyser' });
             if (idStr) {
-                // Try to parse as number first, if it fails, use as string
                 const numericId = parseInt(idStr, 10);
                 snippetId = isNaN(numericId) ? idStr : numericId;
             } else {
@@ -181,10 +251,10 @@ export class SnippetController {
         if (snippetId) {
             const snippet = await this.snippetProvider.getSnippet(snippetId);
             if (snippet) {
-                const analysis = `ID: ${snippet.id}\nName: ${snippet.name}\nDescription: ${snippet.description}\nActive: ${snippet.active}\n\nCode:\n---\n${snippet.code}`;
-                vscode.window.showInformationMessage(`Snippet Analysis: ${snippet.name}`, { modal: true, detail: analysis });
+                const analysis = `ID: ${snippet.id}\nNom: ${snippet.name}\nDescription: ${snippet.description}\nActif: ${snippet.active}\nTags: ${snippet.tags || 'aucun'}\n\nCode:\n---\n${snippet.code}`;
+                vscode.window.showInformationMessage(`Analyse: ${snippet.name}`, { modal: true, detail: analysis });
             } else {
-                vscode.window.showErrorMessage(`Snippet with ID ${snippetId} not found.`);
+                vscode.window.showErrorMessage(`Snippet ID ${snippetId} introuvable.`);
             }
         }
     }

@@ -1,105 +1,73 @@
-# Trae AI - WordPress Snippet Manager
+# WordPress Snippet Manager (v3.0.0)
 
-**Supercharge your WordPress development with AI-powered snippet management directly in your IDE.**
+Manage your WordPress code snippets directly from your IDE (VS Code, Trae AI) with full AI integration. This extension works in tandem with a lightweight WordPress "Bridge" plugin to securely edit, create, and manage your snippets without leaving your editor.
 
-This extension for VS Code & Trae AI transforms the way you handle WordPress snippets. Edit, create, and manage your snippets with natural language, powered by cutting-edge AI models, all without leaving your development environment.
+![Icon](assets/icon.png)
 
----
+## ✨ What's New in Version 3.0.0
 
-### ✨ Key Features
+-   **Multi-Site Management**: Connect to and switch between multiple WordPress sites instantly.
+-   **Multi-Plugin Support**: Full compatibility with both **Code Snippets** and **FluentSnippets**.
+-   **Enhanced Search**: Search by name, description, content, or ID (e.g., "FS2" for FluentSnippet #2).
+-   **Secure Authentication**: Uses WordPress Application Passwords for robust security.
+-   **Improved UI**: Better connection management and snippet organization.
 
-*   **AI-Powered Editing**: Simply describe the changes you want. From simple design to complex logic modifications, the AI agent handles the coding.
-*   **Multi-Model Support**: Choose from a range of powerful AI models like **Gemini, GPT-4, and Claude** to suit your task.
-*   **Multi-Site Management**: 🆕 Manage multiple WordPress sites from a single interface. Switch between projects instantly.
-*   **Multi-Plugin Support**: Full compatibility with both **Code Snippets** and **FluentSnippets** WordPress plugins with seamless switching.
-*   **Advanced Search**: Search snippets by name, description, content, or ID (supports both numeric IDs like "2" and prefixed IDs like "FS2").
-*   **Seamless Snippet Management**: List, view, and edit all your WordPress snippets directly within the IDE.
-*   **Live Synchronization**: Your local edits are instantly and safely synced with your WordPress site.
-*   **Automatic Backups**: Every modification is automatically backed up. A simple dropdown menu lets you restore any previous version in seconds.
-*   **Visual Previews**: See the real-time impact of your code changes with visual feedback and screenshots.
+## 🚀 Key Features
 
----
+-   **AI-Powered Editing**: Describe changes in natural language, and let the AI handle the code.
+-   **Live Synchronization**: Edits are instantly synced to your WordPress site.
+-   **Automatic Backups**: Every change is backed up, allowing for easy restoration.
+-   **Visual Previews**: See the impact of your changes (requires supported setup).
 
-### 🚀 In Action
+## 🛠️ Installation & Setup
 
-See how the AI agent understands a request and modifies the code to change a UI element's color.
+This solution consists of two parts: the **IDE Extension** and the **WordPress Bridge Plugin**.
 
-![AI-Powered UI Change](assets/ide-overview.png)
+### Step 1: Install the WordPress Bridge Plugin
 
-Select from the best AI models for your specific needs.
+1.  Download the `ide-snippets-bridge` plugin folder from this repository (located in `wordpress-plugin/`).
+2.  Zip the folder (`ide-snippets-bridge.zip`).
+3.  Go to your WordPress Admin Dashboard: **Plugins > Add New > Upload Plugin**.
+4.  Upload and activate the plugin.
+5.  **Requirement**: Ensure you have either the **Code Snippets** or **FluentSnippets** plugin installed and active.
 
-![AI Model Selection](assets/ai-model-selection.png)
+### Step 2: Configure WordPress Authentication
 
-Never lose your work with automatic, one-click restores.
+To securely connect your IDE to WordPress, you must use an **Application Password**:
 
-![Backup and Restore](assets/backup-restore.png)
+1.  In WordPress, go to **Users > Profile** (or edit your user).
+2.  Scroll down to the **Application Passwords** section.
+3.  Enter a name (e.g., "Trae IDE") and click **Add New Application Password**.
+4.  **Copy the generated password immediately** (you won't see it again).
 
----
+### Step 3: Connect the Extension
 
-### 🛠️ How It Works
+1.  Open the **WordPress Snippets** view in your IDE.
+2.  Click on **Manage Connections** (or the 🌍/🖥️ icon).
+3.  Click **Add New Connection**.
+4.  Enter your details:
+    -   **Name**: A label for this site (e.g., "My Blog").
+    -   **URL**: Your site's URL (e.g., `https://mysite.com`).
+    -   **Username**: Your WordPress username.
+    -   **Application Password**: The password you generated in Step 2.
+5.  Save the connection.
 
-The system consists of two parts:
-1.  **The IDE Extension**: An intelligent agent that runs in VS Code or Trae AI. It interprets your requests, interacts with the AI models, and manages your local snippet files.
-2.  **The Companion WordPress Plugin**: A lightweight plugin that creates a secure REST API on your WordPress site. This allows the extension to safely communicate with your snippet database.
+## 📖 Usage Guide
 
-### 🔌 Supported WordPress Snippet Plugins
+-   **Browsing**: Snippets are listed in the sidebar. Use the refresh button to sync.
+-   **Editing**: Click a snippet to open it. Changes are saved locally and can be synced back.
+-   **Creating**: Use the "New Snippet" command to start from scratch.
+-   **Switching Sites**: Use the site switcher in the top bar to change the active WordPress connection.
 
-This extension supports multiple WordPress snippet management plugins:
+## 🔒 Security
 
-*   **Code Snippets**: The most popular WordPress snippet plugin with over 1 million active installations.
-*   **FluentSnippets**: Advanced snippet management with enhanced organization features.
+-   All communication is done via the WordPress REST API.
+-   Authentication is handled via **Application Passwords**, which can be revoked at any time from your WordPress profile.
+-   The bridge plugin respects standard WordPress capabilities (requires `manage_options` or similar admin rights).
 
-**Seamless Switching**: Use the plugin switcher button in the extension toolbar to switch between different snippet providers without restarting VS Code.
+## License
 
-**Smart ID System**: 
-- Code Snippets use numeric IDs (e.g., search "15" to find snippet #15)
-- FluentSnippets use prefixed IDs (e.g., search "FS3" or just "3" to find FluentSnippet #3)
-- The extension automatically handles ID conflicts and provides intelligent search across both systems
-
-### 🌐 Multi-Site Management
-
-**NEW**: Manage multiple WordPress sites from a single interface!
-
-*   **Multiple Connections**: Configure and store connections to different WordPress sites
-*   **Quick Switching**: Switch between sites instantly with a single click
-*   **Custom Names**: Give meaningful names to your connections ("Production", "Staging", "Client Site")
-*   **Secure Storage**: All connection data is securely stored in VS Code's secret storage
-*   **Easy Management**: Add, remove, and organize your connections through an intuitive interface
-
-**Getting Started with Multi-Site**:
-1. Use `WordPress Snippets: Manage Connections` to add your first site
-2. Click the 🌍 icon in the toolbar to quickly switch between sites
-3. Use the 🖥️ icon for full connection management
-
-📖 **[Complete Multi-Site Guide](MULTI_SITE_GUIDE.md)**
+MIT License. See [LICENSE](LICENSE) for details.
 
 ---
-
-### 📦 Installation & Setup
-
-**Step 1: Install the WordPress Plugin**
-
-1.  Navigate to the `wordpress-plugin` directory in this repository.
-2.  Compress the `ide-snippets-bridge` folder into a `.zip` file.
-3.  In your WordPress admin dashboard, go to `Plugins > Add New > Upload Plugin`.
-4.  Upload the `.zip` file and activate the "IDE Code Snippets Bridge" plugin.
-
-**Step 2: Install the IDE Extension**
-
-*Currently, this extension is not on the official marketplace. To install it, you will need to load it manually into your IDE.* (Instructions to be added).
-
-**Step 3: Configure the Extension**
-
-Once installed, open the extension settings and provide the URL to your WordPress site. The extension will automatically attempt to connect to the companion plugin's API.
-
----
-
-### License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
 Made with ❤️ by [eliodata.com](https://eliodata.com)
-
-<a href="https://eliodata.com" target="_blank"><img src="assets/logo-eliodata.png" alt="Eliodata" width="150"/></a>

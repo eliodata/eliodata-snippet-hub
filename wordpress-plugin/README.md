@@ -4,131 +4,95 @@
 
 This WordPress plugin serves as the essential bridge between your WordPress site and IDE extensions (like [Trae AI](https://github.com/trae-ai/wordpress-snippets-manager) or VS Code extensions), enabling seamless code snippet management with cutting-edge AI assistance.
 
-## 🚀 What are compatible IDEs?
+## 🚀 Compatible with
 
-This plugin works with various IDE extensions that bring artificial intelligence directly to your WordPress development workflow. For example, Trae AI supports multiple AI models (GPT-4, Claude, Gemini) and allows you to:
+This plugin works as a bridge for:
+-   **Code Snippets**: The popular snippet management plugin.
+-   **FluentSnippets**: The advanced snippet manager.
 
-- **Edit snippets with natural language**: Simply describe what you want to change
-- **Create complex functionality**: From simple design tweaks to advanced logic
-- **Manage snippets effortlessly**: List, view, edit, and organize all your snippets
-- **Sync in real-time**: Changes are instantly reflected on your WordPress site
-- **Automatic backups**: Every modification is safely backed up with easy restoration
+It connects these plugins with IDE extensions like **Trae AI - WordPress Snippets Manager** to allow you to:
+
+-   **Edit snippets with natural language**: Simply describe what you want to change
+-   **Create complex functionality**: From simple design tweaks to advanced logic
+-   **Manage snippets effortlessly**: List, view, edit, and organize all your snippets
+-   **Sync in real-time**: Changes are instantly reflected on your WordPress site
+-   **Automatic backups**: Every modification is safely backed up with easy restoration
 
 ## 🔧 How It Works
 
 This plugin creates a secure REST API that allows compatible IDE extensions to:
 
-1. **Retrieve** all your existing code snippets
-2. **Create** new snippets directly from your IDE
-3. **Update** snippet content with AI-powered modifications
-4. **Delete** snippets you no longer need
-5. **Toggle** snippet activation status
+1.  **Retrieve** all your existing code snippets (from Code Snippets or FluentSnippets)
+2.  **Create** new snippets directly from your IDE
+3.  **Update** snippet content with AI-powered modifications
+4.  **Delete** snippets you no longer need
+5.  **Toggle** snippet activation status
 
 ## 📋 Requirements
 
-- **WordPress**: 5.0 or higher
-- **PHP**: 7.4 or higher
-- **Snippet Management Plugin**: Either Code Snippets or FluentSnippets plugin
-- **Administrator Access**: Required for API authentication
+-   **WordPress**: 5.0 or higher
+-   **PHP**: 7.4 or higher
+-   **Snippet Plugin**: Either [Code Snippets](https://wordpress.org/plugins/code-snippets/) OR [FluentSnippets](https://fluentsnippets.com/) must be installed and active.
+-   **Administrator Access**: Required for API authentication.
 
 ## 🛠️ Installation
 
 ### Method 1: WordPress Admin (Recommended)
 
-1. Download the latest release from the [WordPress Plugin Directory](https://wordpress.org/plugins/ide-snippets-bridge/)
-2. In your WordPress admin, go to **Plugins > Add New**
-3. Click **Upload Plugin** and select the downloaded zip file
-4. Click **Install Now** and then **Activate**
+1.  Download the latest release from the [GitHub Repository](https://github.com/eliodata/wordpress-snippets-manager).
+2.  In your WordPress admin, go to **Plugins > Add New**.
+3.  Click **Upload Plugin** and select the downloaded zip file (`ide-snippets-bridge.zip`).
+4.  Click **Install Now** and then **Activate**.
 
 ### Method 2: Manual Installation
 
-1. Download and extract the plugin files
-2. Upload the `ide-snippets-bridge` folder to `/wp-content/plugins/`
-3. Activate the plugin through the WordPress admin
+1.  Download and extract the plugin files.
+2.  Upload the `ide-snippets-bridge` folder to `/wp-content/plugins/`.
+3.  Activate the plugin through the WordPress admin.
 
 ## ⚙️ Configuration
 
 ### WordPress Setup
 
-1. **Install Snippet Management Plugin**: This plugin requires either the [Code Snippets](https://wordpress.org/plugins/code-snippets/) plugin OR the [FluentSnippets](https://wordpress.org/plugins/fluent-snippets/) plugin to manage your snippets
-2. **Activate the Bridge**: Once both plugins are active, the API endpoints are automatically available
-3. **No additional configuration needed**: The plugin works out of the box
+1.  **Install a Snippet Plugin**: Ensure you have **Code Snippets** or **FluentSnippets** active.
+2.  **Generate Application Password**:
+    -   Go to **Users > Profile**.
+    -   Scroll down to **Application Passwords**.
+    -   Enter a name (e.g., "Trae IDE") and click **Add New Application Password**.
+    -   **Copy the generated password**.
 
 ### IDE Extension Setup
 
-1. **Install Compatible IDE Extension**: Get extensions like Trae AI from the VS Code marketplace or other compatible IDEs
-2. **Configure Connection**: Enter your WordPress site URL in the extension settings
-3. **Authenticate**: The extension will use your WordPress admin credentials
-4. **Start Creating**: Begin managing your snippets with AI assistance
+1.  **Install Compatible IDE Extension**: Get the extension for VS Code or Trae AI.
+2.  **Configure Connection**:
+    -   Enter your WordPress site URL.
+    -   Enter your WordPress username.
+    -   Paste the **Application Password** generated above.
 
 ## 🔒 Security Features
 
-- **WordPress Authentication**: Uses built-in WordPress user authentication
-- **Administrator Only**: Requires `manage_options` capability
-- **Secure API**: All endpoints are properly sanitized and validated
-- **No External Dependencies**: Works entirely within WordPress security framework
+-   **Application Passwords**: Supports and recommends WordPress Application Passwords for secure authentication.
+-   **Administrator Only**: Requires `manage_options` capability.
+-   **Secure API**: All endpoints are properly sanitized and validated.
+-   **No External Dependencies**: Works entirely within WordPress security framework.
 
 ## 🔌 API Endpoints
 
 The plugin provides the following REST API endpoints:
 
-- `GET /wp-json/ide/v1/snippets` - List all snippets
-- `POST /wp-json/ide/v1/snippets` - Create new snippet
-- `GET /wp-json/ide/v1/snippets/{id}` - Get specific snippet
-- `PUT /wp-json/ide/v1/snippets/{id}` - Update snippet
-- `DELETE /wp-json/ide/v1/snippets/{id}` - Delete snippet
+-   `GET /wp-json/ide/v1/snippets` - List all snippets
+-   `POST /wp-json/ide/v1/snippets` - Create new snippet
+-   `GET /wp-json/ide/v1/snippets/{id}` - Get specific snippet
+-   `PUT /wp-json/ide/v1/snippets/{id}` - Update snippet
+-   `DELETE /wp-json/ide/v1/snippets/{id}` - Delete snippet
 
 ## 🤝 Compatibility
 
-- **Code Snippets Plugin**: Full compatibility with all versions
-- **FluentSnippets Plugin**: Full compatibility with advanced snippet management features
-- **WordPress Multisite**: Supported
-- **Popular Themes**: Works with any WordPress theme
-- **Other Plugins**: No known conflicts
+-   **Code Snippets Plugin**: Full compatibility with all versions
+-   **FluentSnippets**: Full compatibility
+-   **WordPress Multisite**: Supported
+-   **Popular Themes**: Works with any WordPress theme
 
-## 🆘 Support
+## License
 
-- **Documentation**: [Complete setup guide](https://github.com/ide-snippets/wordpress-snippets-manager)
-- **Issues**: [Report bugs or request features](https://github.com/ide-snippets/wordpress-snippets-manager/issues)
-- **Community**: Join our [Discord community](https://discord.gg/ide-snippets)
-
-## 🔄 Changelog
-
-### 1.3.1
-- Fixed critical issue with FluentSnippets index.php file deletion during snippet toggle
-- Improved FluentSnippets compatibility with proper draft/published status handling
-- Enhanced snippet deactivation to maintain visibility in FluentSnippets interface
-- Added automatic index.php regeneration with correct Fluent Snippets data structure
-- Improved error handling and debug logging for FluentSnippets operations
-
-### 1.3.0
-- Added full support for FluentSnippets plugin alongside Code Snippets
-- Enhanced API endpoints to handle multiple snippet management plugins
-- Improved snippet parsing for FluentSnippets with Internal Doc sections
-- Added intelligent ID handling for different snippet plugin formats
-- Enhanced search capabilities across multiple snippet providers
-
-### 1.1.0
-- Rebranded to IDE Code Snippets Bridge
-- Enhanced security and error handling
-- Improved API documentation
-- WordPress 6.4 compatibility
-
-### 1.0.0
-- Initial release
-- Basic CRUD operations for snippets
-- WordPress authentication integration
-
-## 👥 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](https://github.com/ide-snippets/wordpress-snippets-manager/blob/main/CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This plugin is licensed under the GPL v3 or later. See [LICENSE](LICENSE) for details.
-
----
-
-**Made with ❤️ by [IDE Snippets](https://eliodata.com)**
-
-*Supercharge your WordPress development with AI-powered snippet management.*
+GPLv3 or later.

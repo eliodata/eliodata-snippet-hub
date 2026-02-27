@@ -22,7 +22,6 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
             this.cachePath = path.join(workspaceFolders[0].uri.fsPath, '.snippet_cache');
             this.backupPath = path.join(workspaceFolders[0].uri.fsPath, '.snippet_backups');
         } else {
-            // Fallback to global storage if no workspace is open
             this.cachePath = path.join(context.globalStorageUri.fsPath, 'snippet_cache');
             this.backupPath = path.join(context.globalStorageUri.fsPath, 'snippet_backups');
             vscode.window.showWarningMessage('No workspace folder is open. Snippet cache and backups will be stored globally.');
@@ -34,7 +33,6 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
             await fs.mkdir(this.backupPath, { recursive: true });
         } catch (error) {
             console.error("Failed to create snippet backup directory", error);
-            vscode.window.showErrorMessage("Failed to create snippet backup directory.");
         }
     }
 
@@ -43,16 +41,70 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
             await fs.mkdir(this.cachePath, { recursive: true });
         } catch (error) {
             console.error("Failed to create snippet cache directory", error);
-            vscode.window.showErrorMessage("Failed to create snippet cache directory.");
         }
     }
 
+    /**
+     * Validate snippet ID to prevent path traversal
+     */
+    private validateSnippetId(id: string | number): boolean {
+        if (typeof id === 'number') {
+            return Number.isInteger(id) && id > 0;
+        }
+        return /^\d+$/.test(id);
+    }
+
     public getSnippetCachePath(id: string | number): string {
+        if (!this.validateSnippetId(id)) {
+            throw new Error(`Invalid snippet ID: ${id}`);
+        }
         return path.join(this.cachePath, `snippet-${id}.php`);
     }
 
     public isSnippetFile(filePath: string): boolean {
         return path.dirname(filePath) === this.cachePath && path.basename(filePath).startsWith('snippet-');
+    }
+
+    /**
+     * Strip any existing header block and <?php tag from code.
+     * Returns only the raw PHP code content.
+     */
+    private stripHeaderAndPhpTag(code: string): string {
+        let cleaned = code;
+        // Remove <?php at the very start
+        cleaned = cleaned.replace(/^<\?php\s*/, '');
+        // Remove the header block /** ... */ at the beginning if present
+        cleaned = cleaned.replace(/^\s*\/\*\*[\s\S]*?\*\/\s*/, '');
+        // Remove any remaining <?php tag after header removal
+        cleaned = cleaned.replace(/^<\?php\s*/, '');
+        return cleaned.trim();
+    }
+
+    /**
+     * Build the cache file content from a snippet.
+     * Single source of truth for cache file format.
+     */
+    private buildCacheContent(snippet: Snippet): string {
+        const cleanCode = this.stripHeaderAndPhpTag(snippet.code);
+        const tags = snippet.tags ? `\n * Tags: ${snippet.tags}` : '';
+        return `<?php
+/**
+ * Snippet ID: ${snippet.id}
+ * Name: ${snippet.name}
+ * Description: ${snippet.description || ''}${tags}
+ * @active ${snippet.active}
+ */
+
+${cleanCode}`;
+    }
+
+    /**
+     * Write snippet to cache file
+     */
+    private async writeCacheFile(snippet: Snippet): Promise<void> {
+        const filePath = this.getSnippetCachePath(snippet.id);
+        const content = this.buildCacheContent(snippet);
+        await fs.writeFile(filePath, content);
     }
 
     public async initialize(): Promise<boolean> {
@@ -61,11 +113,11 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
         const config = await this.configManager.getConfig();
         if (!config) {
             const newConfig = await this.configManager.promptForConfig();
-            if (!newConfig) return false;
+            if (!newConfig) { return false; }
         }
 
         const currentConfig = await this.configManager.getConfig();
-        if (!currentConfig) return false;
+        if (!currentConfig) { return false; }
 
         this.apiConnector = new ApiConnector(
             currentConfig.siteUrl,
@@ -83,16 +135,14 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
 
         try {
             const snippets = await this.apiConnector.getSnippets(status);
+
+            if (!Array.isArray(snippets)) {
+                console.error('API response is not an array:', typeof snippets);
+                throw new Error('La réponse de l\'API n\'est pas un tableau de snippets');
+            }
+
             for (const snippet of snippets) {
-                const filePath = this.getSnippetCachePath(snippet.id);
-                const content = `<?php
-/**
- * Snippet ID: ${snippet.id}
- * Name: ${snippet.name}
- * Description: ${snippet.description}
- * @active ${snippet.active}
- */\n\n${snippet.code}`;
-                await fs.writeFile(filePath, content);
+                await this.writeCacheFile(snippet);
             }
             return snippets;
         } catch (error: any) {
@@ -106,7 +156,6 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
 
-        // Skip FluentSnippets (with FS prefix) as they are not handled by CodeSnippets API
         if (typeof id === 'string' && id.startsWith('FS')) {
             return null;
         }
@@ -114,17 +163,7 @@ export class SnippetProvider implements vscode.Disposable, SnippetPluginProvider
         try {
             const snippet = await this.apiConnector.getSnippet(id as number);
             if (snippet) {
-                const filePath = this.getSnippetCachePath(snippet.id);
-                const content = `<?php
-/**
- * Snippet ID: ${snippet.id}
- * Name: ${snippet.name}
- * Description: ${snippet.description}
- * @active ${snippet.active}
- */
-
-${snippet.code}`;
-                await fs.writeFile(filePath, content);
+                await this.writeCacheFile(snippet);
             }
             return snippet;
         } catch (error: any) {
@@ -153,7 +192,6 @@ ${snippet.code}`;
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
 
-        // Skip FluentSnippets (with FS prefix) as they are not handled by CodeSnippets API
         if (typeof data.id === 'string' && data.id.startsWith('FS')) {
             return false;
         }
@@ -169,7 +207,6 @@ ${snippet.code}`;
     }
 
     public async toggleSnippet(id: string | number, active: boolean): Promise<boolean> {
-        console.log(`Toggling snippet ${id} to ${active}`);
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
@@ -179,29 +216,17 @@ ${snippet.code}`;
         }
 
         try {
-            const response = await this.apiConnector.updateSnippet(id as number, { active });
-            console.log(`API response for toggle snippet ${id}:`, response);
-
-            // Mettre à jour le cache local
-            const snippet = await this.getSnippet(id);
+            await this.apiConnector.updateSnippet(id as number, { active });
+            // Re-fetch and rewrite cache to ensure consistency
+            const snippet = await this.apiConnector.getSnippet(id as number);
             if (snippet) {
-                const filePath = this.getSnippetCachePath(snippet.id);
-                const content = `<?php
-/**
- * Snippet ID: ${snippet.id}
- * Name: ${snippet.name}
- * Description: ${snippet.description}
- * @active ${active}
- */
-
-${snippet.code}`;
-                await fs.writeFile(filePath, content);
+                await this.writeCacheFile(snippet);
             }
             this._onDidChangeSnippets.fire();
             return true;
         } catch (error: any) {
             console.error(`Error toggling snippet ${id}:`, error);
-            vscode.window.showErrorMessage('Erreur lors du changement de statut du snippet: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors du changement de statut: ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
@@ -211,19 +236,18 @@ ${snippet.code}`;
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
 
-        // Skip FluentSnippets (with FS prefix) as they are not handled by CodeSnippets API
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
         }
 
         try {
             await this.apiConnector.deleteSnippet(id as number);
-            const filePath = this.getSnippetCachePath(id);
             try {
+                const filePath = this.getSnippetCachePath(id);
                 await fs.unlink(filePath);
             } catch (e: any) {
                 if (e.code !== 'ENOENT') {
-                    console.error(`Failed to delete cached snippet file: ${filePath}`, e);
+                    console.error(`Failed to delete cached snippet file`, e);
                 }
             }
             this._onDidChangeSnippets.fire();
@@ -234,12 +258,52 @@ ${snippet.code}`;
         }
     }
 
+    /**
+     * Parse the header from a cache file and extract metadata + code
+     */
+    private parseSnippetCacheFile(content: string): {
+        id: number | null;
+        name: string | null;
+        description: string | null;
+        tags: string | null;
+        active: boolean | null;
+        code: string;
+    } {
+        const result = {
+            id: null as number | null,
+            name: null as string | null,
+            description: null as string | null,
+            tags: null as string | null,
+            active: null as boolean | null,
+            code: ''
+        };
 
+        const idMatch = content.match(/\*\s*Snippet ID:\s*(\d+)/);
+        if (idMatch) { result.id = parseInt(idMatch[1], 10); }
+
+        const nameMatch = content.match(/\*\s*Name:\s*(.*)/);
+        if (nameMatch) { result.name = nameMatch[1].trim(); }
+
+        const descMatch = content.match(/\*\s*Description:\s*(.*?)(?=\n\s*\*\s*(?:@|Tags:|Version:|Author:)|\n\s*\*\/|$)/s);
+        if (descMatch) { result.description = descMatch[1].replace(/\n\s*\*/g, ' ').trim(); }
+
+        const tagsMatch = content.match(/\*\s*Tags:\s*(.*)/);
+        if (tagsMatch) { result.tags = tagsMatch[1].trim(); }
+
+        const activeMatch = content.match(/@active\s+(true|false)/);
+        if (activeMatch) { result.active = activeMatch[1] === 'true'; }
+
+        // Extract code: everything after the header block closing */
+        const headerEndIndex = content.indexOf('*/');
+        if (headerEndIndex !== -1) {
+            result.code = content.substring(headerEndIndex + 2).trim();
+        }
+
+        return result;
+    }
 
     public async updateSnippetFromFile(filePath: string): Promise<void> {
-        if (!this.isSnippetFile(filePath)) {
-            return;
-        }
+        if (!this.isSnippetFile(filePath)) { return; }
 
         if (!this.apiConnector) {
             vscode.window.showErrorMessage('Cannot update snippet, API is not connected.');
@@ -248,82 +312,125 @@ ${snippet.code}`;
 
         try {
             const content = await fs.readFile(filePath, 'utf-8');
+            const parsed = this.parseSnippetCacheFile(content);
 
-            const idMatch = content.match(/Snippet ID: (\d+)/);
-            if (!idMatch || !idMatch[1]) {
-                vscode.window.showWarningMessage(`Could not determine Snippet ID for ${path.basename(filePath)}. Update failed.`);
+            if (!parsed.id) {
+                vscode.window.showWarningMessage(`Could not determine Snippet ID for ${path.basename(filePath)}.`);
                 return;
             }
-            const id = parseInt(idMatch[1], 10);
+            const id = parsed.id;
 
+            // Fetch original from API for backup
             const originalSnippet = await this.apiConnector.getSnippet(id);
             if (!originalSnippet) {
-                vscode.window.showErrorMessage(`Snippet with ID ${id} no longer exists. Cannot update.`);
+                vscode.window.showErrorMessage(`Snippet with ID ${id} no longer exists on server.`);
                 return;
             }
 
-            // Backup before syncing
+            // Create backup before syncing
             const backupDir = path.join(this.backupPath, `snippet-${id}`);
             await fs.mkdir(backupDir, { recursive: true });
-
             const now = new Date();
-            const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-            const backupFile = path.join(backupDir, `backup-${timestamp}-pre-sync.json`);
-            await fs.writeFile(backupFile, JSON.stringify(originalSnippet, null, 2));
+            const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+            await fs.writeFile(path.join(backupDir, `backup-${ts}-pre-sync.json`), JSON.stringify(originalSnippet, null, 2));
 
-            // Limit the number of backups
-            const maxBackups = 20;
+            // Limit backups
             const backups = await fs.readdir(backupDir);
-            const sortedBackups = backups.filter(f => f.endsWith('.json')).sort().reverse();
-
-            if (sortedBackups.length > maxBackups) {
-                const backupsToDelete = sortedBackups.slice(maxBackups);
-                for (const fileToDelete of backupsToDelete) {
-                    await fs.unlink(path.join(backupDir, fileToDelete));
+            const sorted = backups.filter(f => f.endsWith('.json')).sort().reverse();
+            if (sorted.length > 20) {
+                for (const old of sorted.slice(20)) {
+                    await fs.unlink(path.join(backupDir, old));
                 }
             }
 
-            if (!originalSnippet) {
-                vscode.window.showErrorMessage(`Snippet with ID ${id} no longer exists. Cannot update.`);
-                return;
-            }
-
-            const headerMatch = content.match(/\/\*\*([\s\S]*?)\*\//);
-            if (!headerMatch) {
-                vscode.window.showErrorMessage("Invalid snippet format. Could not find header comment.");
-                return;
-            }
-            const header = headerMatch[1];
-
-            const descriptionMatch = header.match(/\*\s*Description:\s*(.*?)(?=\n\s*\*\s*@|\n\s*\*\s*Version:|\n\s*\*\s*Author:|\n\s*\*\s*Tags:|\n\s*\*\/|$)/);
-            const tagsMatch = header.match(/\*\s*Tags:\s*(.*)/);
-
-            const headerEndIndex = content.indexOf('*/');
-            const newCode = content.substring(headerEndIndex + 2).trim();
+            // Strip any header artifacts from extracted code
+            const cleanCode = this.stripHeaderAndPhpTag(parsed.code);
 
             const updateData: SnippetUpdateData = {
                 id: originalSnippet.id,
-                name: originalSnippet.name,
-                description: originalSnippet.description,
-                code: newCode,
-                active: originalSnippet.active,
-                tags: originalSnippet.tags,
+                name: parsed.name || originalSnippet.name,
+                description: parsed.description !== null ? parsed.description : originalSnippet.description,
+                code: cleanCode,
+                active: originalSnippet.active, // Keep active status from server
+                tags: parsed.tags || originalSnippet.tags,
             };
 
-            if (descriptionMatch && descriptionMatch[1]) {
-                updateData.description = descriptionMatch[1].replace(/\n\s*\*/g, ' ').trim();
-            }
-
-            if (tagsMatch && tagsMatch[1]) {
-                updateData.tags = tagsMatch[1].trim();
-            }
-
             await this.updateSnippet(updateData);
-            vscode.window.setStatusBarMessage(`Snippet "${originalSnippet.name}" saved and synced!`, 3000);
+
+            // Re-fetch from API and rewrite cache to ensure clean header
+            const updatedSnippet = await this.apiConnector.getSnippet(id);
+            if (updatedSnippet) {
+                await this.writeCacheFile(updatedSnippet);
+            }
+
+            vscode.window.setStatusBarMessage(`Snippet "${updateData.name}" synced!`, 3000);
 
         } catch (error: any) {
             console.error(`Failed to update snippet from file ${filePath}`, error);
             vscode.window.showErrorMessage(`Failed to sync snippet: ${error.message}`);
+        }
+    }
+
+    /**
+     * Rename a snippet on the WordPress server
+     */
+    public async renameSnippet(id: string | number, newName: string): Promise<boolean> {
+        if (!this.apiConnector) {
+            throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (typeof id === 'string' && id.startsWith('FS')) { return false; }
+
+        try {
+            await this.apiConnector.updateSnippet(id as number, { name: newName });
+            const snippet = await this.apiConnector.getSnippet(id as number);
+            if (snippet) { await this.writeCacheFile(snippet); }
+            this._onDidChangeSnippets.fire();
+            return true;
+        } catch (error: any) {
+            vscode.window.showErrorMessage('Erreur lors du renommage: ' + (error?.message || 'Erreur inconnue'));
+            return false;
+        }
+    }
+
+    /**
+     * Update snippet description on the WordPress server
+     */
+    public async updateDescription(id: string | number, newDescription: string): Promise<boolean> {
+        if (!this.apiConnector) {
+            throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (typeof id === 'string' && id.startsWith('FS')) { return false; }
+
+        try {
+            await this.apiConnector.updateSnippet(id as number, { description: newDescription });
+            const snippet = await this.apiConnector.getSnippet(id as number);
+            if (snippet) { await this.writeCacheFile(snippet); }
+            this._onDidChangeSnippets.fire();
+            return true;
+        } catch (error: any) {
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour de la description: ' + (error?.message || 'Erreur inconnue'));
+            return false;
+        }
+    }
+
+    /**
+     * Update snippet tags on the WordPress server
+     */
+    public async updateTags(id: string | number, newTags: string): Promise<boolean> {
+        if (!this.apiConnector) {
+            throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (typeof id === 'string' && id.startsWith('FS')) { return false; }
+
+        try {
+            await this.apiConnector.updateSnippet(id as number, { tags: newTags });
+            const snippet = await this.apiConnector.getSnippet(id as number);
+            if (snippet) { await this.writeCacheFile(snippet); }
+            this._onDidChangeSnippets.fire();
+            return true;
+        } catch (error: any) {
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour des tags: ' + (error?.message || 'Erreur inconnue'));
+            return false;
         }
     }
 
@@ -333,22 +440,18 @@ ${snippet.code}`;
             const files = await fs.readdir(backupDir);
             return files.filter(f => f.endsWith('.json')).sort().reverse();
         } catch (error: any) {
-            if (error.code === 'ENOENT') {
-                return []; // No backups yet
-            }
+            if (error.code === 'ENOENT') { return []; }
             console.error(`Failed to read backups for snippet ${snippetId}`, error);
-            vscode.window.showErrorMessage(`Failed to read backups: ${error.message}`);
             return [];
         }
     }
 
     public async restoreBackup(snippetId: string | number, backupFile: string): Promise<boolean> {
-        const backupPath = path.join(this.backupPath, `snippet-${snippetId}`, backupFile);
+        const backupFilePath = path.join(this.backupPath, `snippet-${snippetId}`, backupFile);
         try {
-            const backupContent = await fs.readFile(backupPath, 'utf-8');
+            const backupContent = await fs.readFile(backupFilePath, 'utf-8');
             const snippetData = JSON.parse(backupContent) as Snippet;
 
-            // The backup contains the full snippet object, we need to pass update data
             const updateData: SnippetUpdateData = {
                 id: snippetData.id,
                 name: snippetData.name,

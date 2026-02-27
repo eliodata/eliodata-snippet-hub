@@ -1,10 +1,11 @@
 {
     "name": "wordpress-snippets-manager",
-    "displayName": "Trae AI - WordPress Snippet Manager",
-    "description": "Supercharge your WordPress development with AI-powered snippet management directly in your IDE.",
-    "version": "2.2.0",
+    "displayName": "WordPress Snippet Manager",
+    "description": "Manage your WordPress Code Snippets directly from your IDE with sync, search, and metadata editing.",
+    "version": "3.0.0",
     "publisher": "trae-ai",
     "author": "eliodata.com",
+    "icon": "assets/icon.png",
     "repository": {
         "type": "git",
         "url": "https://github.com/eliodata/wordpress-snippets-manager.git"
@@ -16,7 +17,12 @@
         "Other"
     ],
     "activationEvents": [
-        "onStartup"
+        "onStartupFinished",
+        "onView:wordpress-snippets-view",
+        "onCommand:wordpressSnippets.list",
+        "onCommand:wordpressSnippets.manageConnections",
+        "onCommand:wordpressSnippets.switchConnection",
+        "workspaceContains:.snippet_cache"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -109,8 +115,22 @@
                 "command": "wordpressSnippets.switchConnection",
                 "title": "WordPress Snippets: Switch Connection",
                 "icon": "$(globe)"
+            },
+            {
+                "command": "wordpressSnippets.renameSnippet",
+                "title": "Rename Snippet",
+                "icon": "$(edit)"
+            },
+            {
+                "command": "wordpressSnippets.editDescription",
+                "title": "Edit Description",
+                "icon": "$(note)"
+            },
+            {
+                "command": "wordpressSnippets.editTags",
+                "title": "Edit Tags",
+                "icon": "$(tag)"
             }
-
         ],
         "menus": {
             "view/title": [
@@ -184,28 +204,43 @@
             "view/item/context": [
                 {
                     "command": "wordpressSnippets.openSnippet",
-                    "when": "viewItem == 'snippet'",
+                    "when": "viewItem == snippet",
                     "group": "navigation@1"
                 },
                 {
                     "command": "wordpressSnippets.toggleSnippet",
-                    "when": "viewItem == 'snippet'",
+                    "when": "viewItem == snippet",
                     "group": "inline"
                 },
                 {
-                    "command": "wordpressSnippets.analyzeSnippet",
-                    "when": "viewItem == 'snippet'",
+                    "command": "wordpressSnippets.renameSnippet",
+                    "when": "viewItem == snippet",
                     "group": "navigation@2"
                 },
                 {
-                    "command": "wordpressSnippets.delete",
-                    "when": "viewItem == 'snippet'",
+                    "command": "wordpressSnippets.editDescription",
+                    "when": "viewItem == snippet",
                     "group": "navigation@3"
                 },
                 {
-                    "command": "wordpressSnippets.restoreBackup",
-                    "when": "viewItem == 'snippet'",
+                    "command": "wordpressSnippets.editTags",
+                    "when": "viewItem == snippet",
                     "group": "navigation@4"
+                },
+                {
+                    "command": "wordpressSnippets.analyzeSnippet",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "wordpressSnippets.delete",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@6"
+                },
+                {
+                    "command": "wordpressSnippets.restoreBackup",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@7"
                 }
             ]
         },
@@ -256,6 +291,6 @@
         "vsce": "^2.15.0"
     },
     "dependencies": {
-        "axios": "^1.10.0"
+        "axios": "^1.6.0"
     }
 }
