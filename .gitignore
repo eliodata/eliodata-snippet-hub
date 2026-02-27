@@ -31,6 +31,9 @@ back/
 *.zip
 *.tar.gz
 
+# Local backups
+BACKUP OLD/
+
 # Test files
 test-*
 diagnostic-*
