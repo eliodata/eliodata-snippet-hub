@@ -9,7 +9,8 @@ export class ApiConnector {
     constructor(apiUrl: string, username: string, applicationPassword: string) {
         this.apiUrl = apiUrl.endsWith('/') ? apiUrl : apiUrl + '/';
         this.username = username;
-        this.applicationPassword = applicationPassword;
+        // Clean up application password by removing spaces that WordPress UI adds for readability
+        this.applicationPassword = applicationPassword.replace(/\s+/g, '');
     }
 
     private getAuthHeaders() {

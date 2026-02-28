@@ -12,15 +12,27 @@ export class ConfigManager {
     }
 
     public async saveConfig(config: WordPressConnectionConfig): Promise<void> {
-        await this.context.secrets.store(ConfigManager.CONFIG_KEY, JSON.stringify(config));
+        try {
+            await this.context.secrets.store(ConfigManager.CONFIG_KEY, JSON.stringify(config));
+            console.log('Configuration sauvegardée avec succès (single-site).');
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde de la configuration:', error);
+            vscode.window.showErrorMessage('Erreur lors de la sauvegarde de la configuration.');
+        }
     }
 
     public async getConfig(): Promise<WordPressConnectionConfig | null> {
-        const configStr = await this.context.secrets.get(ConfigManager.CONFIG_KEY);
-        if (!configStr) {
+        try {
+            const configStr = await this.context.secrets.get(ConfigManager.CONFIG_KEY);
+            if (!configStr) {
+                console.log('Aucune configuration trouvée (single-site).');
+                return null;
+            }
+            return JSON.parse(configStr);
+        } catch (error) {
+            console.error('Erreur lors de la lecture de la configuration:', error);
             return null;
         }
-        return JSON.parse(configStr);
     }
 
     public async clearConfig(): Promise<void> {
@@ -29,15 +41,25 @@ export class ConfigManager {
 
     // Nouvelles méthodes pour la gestion multi-sites
     public async getMultiSiteConfig(): Promise<MultiSiteConfig> {
-        const configStr = await this.context.secrets.get(ConfigManager.MULTI_SITE_CONFIG_KEY);
-        if (!configStr) {
+        try {
+            const configStr = await this.context.secrets.get(ConfigManager.MULTI_SITE_CONFIG_KEY);
+            if (!configStr) {
+                return { connections: [] };
+            }
+            return JSON.parse(configStr);
+        } catch (error) {
+            console.error('Erreur lors de la lecture de la configuration multi-sites:', error);
             return { connections: [] };
         }
-        return JSON.parse(configStr);
     }
 
     public async saveMultiSiteConfig(config: MultiSiteConfig): Promise<void> {
-        await this.context.secrets.store(ConfigManager.MULTI_SITE_CONFIG_KEY, JSON.stringify(config));
+        try {
+            await this.context.secrets.store(ConfigManager.MULTI_SITE_CONFIG_KEY, JSON.stringify(config));
+            console.log('Configuration multi-sites sauvegardée avec succès.');
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde de la configuration multi-sites:', error);
+        }
     }
 
     public async addConnection(connection: WordPressConnectionConfig): Promise<void> {
@@ -114,8 +136,14 @@ export class ConfigManager {
     public async switchPlugin(): Promise<WordPressConnectionConfig | null> {
         const currentConfig = await this.getConfig();
         if (!currentConfig) {
-            vscode.window.showErrorMessage('Aucune configuration existante. Veuillez d\'abord vous connecter.');
-            return this.promptForConfig();
+            const choice = await vscode.window.showInformationMessage(
+                'Aucune connexion active. Voulez-vous en configurer une ?',
+                'Oui', 'Non'
+            );
+            if (choice === 'Oui') {
+                return this.promptForConfig();
+            }
+            return null;
         }
 
         const apiConnector = new ApiConnector(currentConfig.siteUrl, currentConfig.username, currentConfig.applicationPassword);
@@ -269,7 +297,7 @@ export class ConfigManager {
 
         if (!username) return null;
 
-        const applicationPassword = await vscode.window.showInputBox({
+        let applicationPassword = await vscode.window.showInputBox({
             prompt: 'Entrez votre mot de passe d\'application WordPress',
             password: true,
             ignoreFocusOut: true
@@ -277,12 +305,18 @@ export class ConfigManager {
 
         if (!applicationPassword) return null;
 
+        // Clean up password (remove spaces)
+        applicationPassword = applicationPassword.replace(/\s+/g, '');
+
         const apiConnector = new ApiConnector(siteUrl, username, applicationPassword);
         try {
+            console.log(`Tentative de connexion à ${siteUrl} avec l'utilisateur ${username}...`);
             const status = await apiConnector.getStatus();
+            console.log('Statut reçu:', status);
 
             if (!status.active_plugins || status.active_plugins.length === 0) {
-                vscode.window.showErrorMessage(status.message);
+                const msg = status.message || 'Aucun plugin de snippet compatible détecté.';
+                vscode.window.showErrorMessage(msg);
                 return null;
             }
 

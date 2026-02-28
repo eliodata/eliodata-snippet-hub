@@ -1,10 +1,10 @@
 === IDE Code Snippets Bridge ===
 Contributors: eliodata
 Donate link: https://eliodata.com/donate
-Tags: snippets, code, ide, api, development, fluentsnippets, codesnippets
+Tags: snippets, code, ide, api, codesnippets
 Requires at least: 5.0
-Tested up to: 6.8
-Stable tag: 1.2.0
+Tested up to: 6.9
+Stable tag: 1.3.1
 Requires PHP: 7.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
@@ -21,7 +21,7 @@ IDE Code Snippets Bridge serves as the essential connection between your WordPre
 
 This plugin works as a bridge for:
 *   **Code Snippets**: The popular snippet management plugin.
-*   **FluentSnippets**: The advanced snippet manager.
+*   **FluentSnippets**: The powerful snippet management plugin.
 
 It connects these plugins with IDE extensions like **Trae AI - WordPress Snippets Manager** to allow you to:
 
@@ -35,7 +35,7 @@ It connects these plugins with IDE extensions like **Trae AI - WordPress Snippet
 
 This plugin creates a secure REST API that allows compatible IDE extensions to:
 
-1.  **Retrieve** all your existing code snippets (from Code Snippets or FluentSnippets).
+1.  **Retrieve** all your existing code snippets (from Code Snippets).
 2.  **Create** new snippets directly from your IDE.
 3.  **Update** snippet content with AI-powered modifications.
 4.  **Delete** snippets you no longer need.
@@ -45,7 +45,7 @@ This plugin creates a secure REST API that allows compatible IDE extensions to:
 
 *   **WordPress**: 5.0 or higher
 *   **PHP**: 7.4 or higher
-*   **Snippet Plugin**: Either [Code Snippets](https://wordpress.org/plugins/code-snippets/) OR [FluentSnippets](https://fluentsnippets.com/) must be installed and active.
+*   **Snippet Plugin**: [Code Snippets](https://wordpress.org/plugins/code-snippets/) or [FluentSnippets](https://fluentsnippets.com/) must be installed and active.
 *   **Administrator Access**: Required for API authentication.
 
 = 🔒 Security Features =
@@ -72,7 +72,7 @@ This plugin creates a secure REST API that allows compatible IDE extensions to:
 
 = Setup =
 
-1.  **Install a Snippet Plugin**: Ensure you have **Code Snippets** or **FluentSnippets** active.
+1.  **Install Code Snippets**: Ensure you have **Code Snippets** active.
 2.  **Generate Application Password**: Go to **Users > Profile**, scroll to "Application Passwords", create a new one, and copy it.
 3.  **Configure IDE Extension**: In VS Code/Trae, add a new connection using your site URL, username, and the Application Password.
 
@@ -80,7 +80,7 @@ This plugin creates a secure REST API that allows compatible IDE extensions to:
 
 = Do I need a snippet plugin? =
 
-Yes, this plugin acts as a bridge. You must have either **Code Snippets** (free/pro) or **FluentSnippets** installed to actually store and execute the code.
+Yes, this plugin acts as a bridge. You must have **Code Snippets** (free/pro) installed to store and execute the snippets.
 
 = Is this plugin secure? =
 

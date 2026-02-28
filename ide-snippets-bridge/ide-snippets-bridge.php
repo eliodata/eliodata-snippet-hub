@@ -1,15 +1,15 @@
 <?php
 /**
  * Plugin Name: IDE Code Snippets Bridge
- * Plugin URI: https://github.com/ide-snippets/wordpress-snippets-manager
+ * Plugin URI: https://github.com/eliodata/wordpress-snippets-manager
  * Description: Bridge plugin that provides a secure REST API to connect your WordPress site with IDE extensions (like Trae AI, VS Code) for seamless code snippet management.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: IDE Snippets by eliodata.com
  * Author URI: https://eliodata.com
  * License: GPL v3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Requires at least: 5.0
- * Tested up to: 6.8
+ * Tested up to: 6.9
  * Requires PHP: 7.4
  * Text Domain: ide-snippets-bridge
  *
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('IDE_SNIPPETS_BRIDGE_VERSION', '1.3.0');
+define('IDE_SNIPPETS_BRIDGE_VERSION', '1.3.1');
 define('IDE_SNIPPETS_BRIDGE_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('IDE_SNIPPETS_BRIDGE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('IDE_SNIPPETS_BRIDGE_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -105,6 +105,10 @@ class IDE_Snippets_Bridge {
      * Plugin activation
      */
     public function activate() {
+        if (!function_exists('deactivate_plugins')) {
+            include_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
         if (version_compare(get_bloginfo('version'), '5.0', '<')) {
             deactivate_plugins(IDE_SNIPPETS_BRIDGE_PLUGIN_BASENAME);
             wp_die(esc_html__('IDE Code Snippets Bridge requires WordPress 5.0 or higher.', 'ide-snippets-bridge'));

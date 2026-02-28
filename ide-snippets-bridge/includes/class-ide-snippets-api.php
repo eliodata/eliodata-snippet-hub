@@ -112,8 +112,18 @@ class IDE_Snippets_API {
      */
     private function table_exists() {
         global $wpdb;
-        $table = $this->get_table_name();
-        return $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) === $table;
+        $table     = $this->get_table_name();
+        $cache_key = 'table_exists:' . $table;
+
+        $cached = wp_cache_get($cache_key, 'ide_snippets_bridge');
+        if ($cached !== false) {
+            return (bool) $cached;
+        }
+
+        $exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) === $table;
+        wp_cache_set($cache_key, $exists ? 1 : 0, 'ide_snippets_bridge', 300);
+
+        return $exists;
     }
 
     /**
@@ -158,16 +168,42 @@ class IDE_Snippets_API {
      * @return WP_REST_Response
      */
     public function get_status(WP_REST_Request $request) {
+        if (!function_exists('is_plugin_active')) {
+            include_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
         $cs_active     = is_plugin_active('code-snippets/code-snippets.php');
         $cs_pro_active = is_plugin_active('code-snippets-pro/code-snippets.php');
+        
+        // FluentSnippets detection
+        $fs_active     = is_plugin_active('fluent-snippets/fluent-snippets.php');
+        $fs_pro_active = is_plugin_active('fluent-snippets-pro/fluent-snippets.php');
+        
         $table_ok      = $this->table_exists();
+
+        $active_plugins = [];
+        if ($cs_active || $cs_pro_active) {
+            $active_plugins[] = 'Code Snippets';
+        }
+        if ($fs_active || $fs_pro_active) {
+            $active_plugins[] = 'FluentSnippets';
+        }
+
+        // Get FluentSnippets path if active
+        $fluent_path = null;
+        if ($fs_active || $fs_pro_active) {
+            $upload_dir = wp_upload_dir();
+            $fluent_path = $upload_dir['basedir'] . '/fluent-snippets';
+        }
 
         return new WP_REST_Response([
             'plugin'          => 'IDE Code Snippets Bridge',
-            'version'         => defined('IDE_SNIPPETS_BRIDGE_VERSION') ? IDE_SNIPPETS_BRIDGE_VERSION : '1.2.0',
+            'version'         => defined('IDE_SNIPPETS_BRIDGE_VERSION') ? IDE_SNIPPETS_BRIDGE_VERSION : '1.3.1',
             'wordpress'       => get_bloginfo('version'),
             'php'             => PHP_VERSION,
             'code_snippets'   => $cs_active || $cs_pro_active,
+            'active_plugins'  => $active_plugins,
+            'fluent_snippets_path' => $fluent_path,
             'table_exists'    => $table_ok,
             'site_url'        => get_site_url(),
             'timezone'        => wp_timezone_string(),
