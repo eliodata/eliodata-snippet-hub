@@ -1,0 +1,306 @@
+{
+    "name": "wordpress-snippets-manager",
+    "displayName": "%extension.displayName%",
+    "description": "%extension.description%",
+    "version": "3.0.1",
+    "publisher": "trae-ai",
+    "author": "eliodata.com",
+    "icon": "assets/icon.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/eliodata/wordpress-snippets-manager.git"
+    },
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "onView:wordpress-snippets-view",
+        "onCommand:wordpressSnippets.list",
+        "onCommand:wordpressSnippets.manageConnections",
+        "onCommand:wordpressSnippets.switchConnection",
+        "workspaceContains:.snippet_cache"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "wordpressSnippets.list",
+                "title": "%command.list%"
+            },
+            {
+                "command": "wordpressSnippets.create",
+                "title": "%command.create%"
+            },
+            {
+                "command": "wordpressSnippets.delete",
+                "title": "%command.delete%"
+            },
+            {
+                "command": "wordpressSnippets.configure",
+                "title": "%command.configure%"
+            },
+            {
+                "command": "wordpressSnippets.refresh",
+                "title": "%command.refresh%",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "wordpressSnippets.createSnippet",
+                "title": "%command.newSnippet%",
+                "icon": "$(add)"
+            },
+            {
+                "command": "wordpressSnippets.openSnippet",
+                "title": "%command.openSnippet%"
+            },
+            {
+                "command": "wordpressSnippets.toggleSnippet",
+                "title": "%command.toggleActive%"
+            },
+            {
+                "command": "wordpressSnippets.sortAsc",
+                "title": "%command.sortAsc%",
+                "icon": "$(arrow-up)"
+            },
+            {
+                "command": "wordpressSnippets.sortDesc",
+                "title": "%command.sortDesc%",
+                "icon": "$(arrow-down)"
+            },
+            {
+                "command": "wordpressSnippets.analyzeSnippet",
+                "title": "%command.analyze%"
+            },
+            {
+                "command": "wordpressSnippets.filterActive",
+                "title": "%command.filterActive%"
+            },
+            {
+                "command": "wordpressSnippets.filterInactive",
+                "title": "%command.filterInactive%"
+            },
+            {
+                "command": "wordpressSnippets.filterAll",
+                "title": "%command.filterAll%"
+            },
+            {
+                "command": "wordpressSnippets.searchSnippets",
+                "title": "%command.search%",
+                "icon": "$(search)"
+            },
+            {
+                "command": "wordpressSnippets.clearSearch",
+                "title": "%command.clearSearch%",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "wordpressSnippets.restoreBackup",
+                "title": "%command.restoreBackup%"
+            },
+            {
+                "command": "wordpress-snippets.switchPlugin",
+                "title": "%command.switchPlugin%",
+                "icon": "$(arrow-swap)"
+            },
+            {
+                "command": "wordpressSnippets.manageConnections",
+                "title": "%command.manageConnections%",
+                "icon": "$(server-environment)"
+            },
+            {
+                "command": "wordpressSnippets.switchConnection",
+                "title": "%command.switchConnection%",
+                "icon": "$(globe)"
+            },
+            {
+                "command": "wordpressSnippets.renameSnippet",
+                "title": "%command.rename%",
+                "icon": "$(edit)"
+            },
+            {
+                "command": "wordpressSnippets.editDescription",
+                "title": "%command.editDescription%",
+                "icon": "$(note)"
+            },
+            {
+                "command": "wordpressSnippets.editTags",
+                "title": "%command.editTags%",
+                "icon": "$(tag)"
+            },
+            {
+                "command": "wordpressSnippets.editAttribution",
+                "title": "%command.editAttribution%",
+                "icon": "$(target)"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "wordpressSnippets.createSnippet",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "wordpressSnippets.refresh",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "wordpressSnippets.searchSnippets",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "wordpressSnippets.clearSearch",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "wordpressSnippets.sortAsc",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "wordpressSnippets.sortDesc",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "wordpressSnippets.filterActive",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@6",
+                    "icon": "$(filter)"
+                },
+                {
+                    "command": "wordpressSnippets.filterInactive",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@7",
+                    "icon": "$(filter)"
+                },
+                {
+                    "command": "wordpressSnippets.filterAll",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@8",
+                    "icon": "$(clear-all)"
+                },
+                {
+                    "command": "wordpress-snippets.switchPlugin",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@9",
+                    "icon": "$(arrow-swap)"
+                },
+                {
+                    "command": "wordpressSnippets.manageConnections",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@10",
+                    "icon": "$(server-environment)"
+                },
+                {
+                    "command": "wordpressSnippets.switchConnection",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@11",
+                    "icon": "$(globe)"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "wordpressSnippets.openSnippet",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "wordpressSnippets.toggleSnippet",
+                    "when": "viewItem == snippet",
+                    "group": "inline"
+                },
+                {
+                    "command": "wordpressSnippets.renameSnippet",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "wordpressSnippets.editDescription",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "wordpressSnippets.editTags",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "wordpressSnippets.editAttribution",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "wordpressSnippets.analyzeSnippet",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@6"
+                },
+                {
+                    "command": "wordpressSnippets.delete",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@7"
+                },
+                {
+                    "command": "wordpressSnippets.restoreBackup",
+                    "when": "viewItem == snippet",
+                    "group": "navigation@8"
+                }
+            ]
+        },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "wordpress-snippets-manager",
+                    "title": "%viewContainer.title%",
+                    "icon": "assets/wordpress-logo.svg"
+                }
+            ]
+        },
+        "views": {
+            "wordpress-snippets-manager": [
+                {
+                    "id": "wordpress-snippets-view",
+                    "name": "%view.snippets%"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "wordpressSnippets.searchSnippets",
+                "key": "ctrl+f",
+                "when": "view == wordpress-snippets-view && viewItem != snippet"
+            },
+            {
+                "command": "wordpressSnippets.clearSearch",
+                "key": "escape",
+                "when": "view == wordpress-snippets-view"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "lint": "eslint src --ext ts",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^16.x",
+        "@types/vscode": "^1.60.0",
+        "@typescript-eslint/eslint-plugin": "^5.x",
+        "@typescript-eslint/parser": "^5.x",
+        "eslint": "^8.x",
+        "typescript": "^4.9.5",
+        "vsce": "^2.15.0"
+    },
+    "dependencies": {
+        "axios": "^1.6.0"
+    }
+}

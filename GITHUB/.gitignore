@@ -1,0 +1,7 @@
+/node_modules
+*.vsix
+.DS_Store
+*.zip
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
