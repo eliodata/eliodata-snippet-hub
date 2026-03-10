@@ -3,10 +3,6 @@
 src/**
 .gitignore
 tsconfig.json
-vsc-extension-quickstart.md
-.snippet_cache/**
-.snippet_backups/**
-BACKUP OLD/**
-ide-snippets-bridge-*.json
 **/*.map
 .DS_Store
+ide-snippets-bridge/**

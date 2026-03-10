@@ -1,44 +1,8 @@
-# Dependencies
 /node_modules
-
-# Build output
-/out
-*.vsix
-
-# VSCode
 .vscode/
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# Mac
+*.vsix
 .DS_Store
-
-# Log files
+*.zip
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# WordPress Snippets Cache and Backups (user data)
-.snippet_cache/
-.snippet_backups/
-back/
-
-# Temporary files
-*.tmp
-*.temp
-*.zip
-*.tar.gz
-
-# Local backups
-BACKUP OLD/
-
-# Test files
-test-*
-diagnostic-*
-*-test.*
-
-# Documentation drafts
-*-draft.md
-*-guide.md
