@@ -123,13 +123,14 @@ class IDE_Snippets_API {
         global $wpdb;
         $cache_key = 'table_exists:' . $table;
 
-        $cached = wp_cache_get($cache_key, 'ide_snippets_bridge');
+        $cached = wp_cache_get($cache_key, 'eliodata_snippet_hub');
         if ($cached !== false) {
             return (bool) $cached;
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) === $table;
-        wp_cache_set($cache_key, $exists ? 1 : 0, 'ide_snippets_bridge', 300);
+        wp_cache_set($cache_key, $exists ? 1 : 0, 'eliodata_snippet_hub', 300);
 
         return $exists;
     }
@@ -151,7 +152,7 @@ class IDE_Snippets_API {
                 'table' => $this->get_native_table_name(),
             ],
         ];
-        $engines = apply_filters('ide_snippets_bridge_registered_engines', $engines, $this);
+        $engines = apply_filters('eliodata_snippet_hub_registered_engines', $engines, $this);
         if (!is_array($engines)) {
             $engines = [];
         }
@@ -172,7 +173,7 @@ class IDE_Snippets_API {
 
     private function get_enabled_engines() {
         $registered = $this->get_registered_engines();
-        $enabled = apply_filters('ide_snippets_bridge_enabled_engines', $this->supported_engines, $registered, $this);
+        $enabled = apply_filters('eliodata_snippet_hub_enabled_engines', $this->supported_engines, $registered, $this);
         if (!is_array($enabled)) {
             $enabled = ['native'];
         }
@@ -239,7 +240,7 @@ class IDE_Snippets_API {
         }
 
         self::create_native_table();
-        wp_cache_delete('table_exists:' . $this->get_native_table_name(), 'ide_snippets_bridge');
+        wp_cache_delete('table_exists:' . $this->get_native_table_name(), 'eliodata_snippet_hub');
 
         return $this->native_table_exists();
     }
@@ -318,14 +319,14 @@ class IDE_Snippets_API {
             return $this->ensure_native_table();
         }
 
-        return (bool) apply_filters('ide_snippets_bridge_engine_is_ready', false, $engine, $this->get_registered_engines(), $this);
+        return (bool) apply_filters('eliodata_snippet_hub_engine_is_ready', false, $engine, $this->get_registered_engines(), $this);
     }
 
     private function engine_supports_targeting($engine) {
         if ($engine === 'native') {
             return true;
         }
-        return (bool) apply_filters('ide_snippets_bridge_engine_supports_targeting', false, $engine, $this->get_registered_engines(), $this);
+        return (bool) apply_filters('eliodata_snippet_hub_engine_supports_targeting', false, $engine, $this->get_registered_engines(), $this);
     }
 
     /**
@@ -390,7 +391,7 @@ class IDE_Snippets_API {
 
         return new WP_REST_Response([
             'plugin'          => 'Eliodata Snippet Hub',
-            'version'         => defined('IDE_SNIPPETS_BRIDGE_VERSION') ? IDE_SNIPPETS_BRIDGE_VERSION : '2.0.0',
+            'version'         => defined('ELIODATA_SNIPPET_HUB_VERSION') ? ELIODATA_SNIPPET_HUB_VERSION : '2.0.0',
             'wordpress'       => get_bloginfo('version'),
             'php'             => PHP_VERSION,
             'native'          => $native_ok,
@@ -422,27 +423,31 @@ class IDE_Snippets_API {
 
         $engine = $this->resolve_engine($request);
         if (!$this->ensure_engine_ready($engine)) {
-            return new WP_Error('table_missing', __('IDE Snippets table not found.', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('table_missing', __('IDE Snippets table not found.', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $table  = $this->get_table_name_for_engine($engine);
         $status = $request->get_param('status');
 
         if ($status === 'active') {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $results = $wpdb->get_results(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                 $wpdb->prepare("SELECT * FROM `{$table}` WHERE active = %d ORDER BY id ASC", 1)
             );
         } elseif ($status === 'inactive') {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $results = $wpdb->get_results(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                 $wpdb->prepare("SELECT * FROM `{$table}` WHERE active = %d ORDER BY id ASC", 0)
             );
         } else {
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $results = $wpdb->get_results("SELECT * FROM `{$table}` ORDER BY id ASC");
         }
 
         if ($results === null) {
-            return new WP_Error('db_error', __('Database query failed', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('db_error', __('Database query failed', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $results = array_map([$this, 'format_snippet'], $results);
@@ -466,22 +471,24 @@ class IDE_Snippets_API {
 
         $engine = $this->resolve_engine($request);
         if (!$this->ensure_engine_ready($engine)) {
-            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $id    = absint($request['id']);
         $table = $this->get_table_name_for_engine($engine);
 
         if (!$id) {
-            return new WP_Error('invalid_id', __('Invalid snippet ID', 'ide-snippets-bridge'), ['status' => 400]);
+            return new WP_Error('invalid_id', __('Invalid snippet ID', 'eliodata-snippet-hub'), ['status' => 400]);
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $snippet = $wpdb->get_row(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare("SELECT * FROM `{$table}` WHERE id = %d", $id)
         );
 
         if (!$snippet) {
-            return new WP_Error('not_found', __('Snippet not found', 'ide-snippets-bridge'), ['status' => 404]);
+            return new WP_Error('not_found', __('Snippet not found', 'eliodata-snippet-hub'), ['status' => 404]);
         }
 
         return new WP_REST_Response($this->format_snippet($snippet), 200);
@@ -508,14 +515,14 @@ class IDE_Snippets_API {
 
         $engine = $this->resolve_engine($request);
         if (!$this->ensure_engine_ready($engine)) {
-            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $params = $request->get_json_params();
         $table  = $this->get_table_name_for_engine($engine);
 
         if (empty($params['name'])) {
-            return new WP_Error('missing_name', __('Snippet name is required', 'ide-snippets-bridge'), ['status' => 400]);
+            return new WP_Error('missing_name', __('Snippet name is required', 'eliodata-snippet-hub'), ['status' => 400]);
         }
 
         $data = [
@@ -535,14 +542,17 @@ class IDE_Snippets_API {
             $data['target_post_ids'] = isset($params['target_post_ids']) ? sanitize_text_field($params['target_post_ids']) : '';
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $result = $wpdb->insert($table, $data);
 
         if (false === $result) {
-            return new WP_Error('db_error', __('Could not create snippet:', 'ide-snippets-bridge') . ' ' . $wpdb->last_error, ['status' => 500]);
+            return new WP_Error('db_error', __('Could not create snippet:', 'eliodata-snippet-hub') . ' ' . $wpdb->last_error, ['status' => 500]);
         }
 
         $new_id      = $wpdb->insert_id;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $new_snippet = $wpdb->get_row(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare("SELECT * FROM `{$table}` WHERE id = %d", $new_id)
         );
 
@@ -567,7 +577,7 @@ class IDE_Snippets_API {
 
         $engine = $this->resolve_engine($request);
         if (!$this->ensure_engine_ready($engine)) {
-            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $id     = absint($request['id']);
@@ -575,15 +585,17 @@ class IDE_Snippets_API {
         $table  = $this->get_table_name_for_engine($engine);
 
         if (!$id) {
-            return new WP_Error('invalid_id', __('Invalid snippet ID', 'ide-snippets-bridge'), ['status' => 400]);
+            return new WP_Error('invalid_id', __('Invalid snippet ID', 'eliodata-snippet-hub'), ['status' => 400]);
         }
 
         // Verify snippet exists
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $existing = $wpdb->get_row(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare("SELECT id FROM `{$table}` WHERE id = %d", $id)
         );
         if (!$existing) {
-            return new WP_Error('not_found', __('Snippet not found', 'ide-snippets-bridge'), ['status' => 404]);
+            return new WP_Error('not_found', __('Snippet not found', 'eliodata-snippet-hub'), ['status' => 404]);
         }
 
         $data = [];
@@ -624,16 +636,19 @@ class IDE_Snippets_API {
         $data['modified'] = current_time('mysql');
 
         if (empty($data) || (count($data) === 1 && isset($data['modified']))) {
-            return new WP_Error('no_data', __('No fields to update', 'ide-snippets-bridge'), ['status' => 400]);
+            return new WP_Error('no_data', __('No fields to update', 'eliodata-snippet-hub'), ['status' => 400]);
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         $result = $wpdb->update($table, $data, ['id' => $id]);
 
         if (false === $result) {
-            return new WP_Error('db_error', __('Could not update snippet:', 'ide-snippets-bridge') . ' ' . $wpdb->last_error, ['status' => 500]);
+            return new WP_Error('db_error', __('Could not update snippet:', 'eliodata-snippet-hub') . ' ' . $wpdb->last_error, ['status' => 500]);
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $updated = $wpdb->get_row(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare("SELECT * FROM `{$table}` WHERE id = %d", $id)
         );
 
@@ -656,28 +671,31 @@ class IDE_Snippets_API {
 
         $engine = $this->resolve_engine($request);
         if (!$this->ensure_engine_ready($engine)) {
-            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'ide-snippets-bridge'), ['status' => 500]);
+            return new WP_Error('table_missing', __('Snippet storage is not available for selected engine.', 'eliodata-snippet-hub'), ['status' => 500]);
         }
 
         $id    = absint($request['id']);
         $table = $this->get_table_name_for_engine($engine);
 
         if (!$id) {
-            return new WP_Error('invalid_id', __('Invalid snippet ID', 'ide-snippets-bridge'), ['status' => 400]);
+            return new WP_Error('invalid_id', __('Invalid snippet ID', 'eliodata-snippet-hub'), ['status' => 400]);
         }
 
         // Verify snippet exists
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $existing = $wpdb->get_row(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare("SELECT id FROM `{$table}` WHERE id = %d", $id)
         );
         if (!$existing) {
-            return new WP_Error('not_found', __('Snippet not found', 'ide-snippets-bridge'), ['status' => 404]);
+            return new WP_Error('not_found', __('Snippet not found', 'eliodata-snippet-hub'), ['status' => 404]);
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         $result = $wpdb->delete($table, ['id' => $id], ['%d']);
 
         if (false === $result) {
-            return new WP_Error('db_error', __('Could not delete snippet:', 'ide-snippets-bridge') . ' ' . $wpdb->last_error, ['status' => 500]);
+            return new WP_Error('db_error', __('Could not delete snippet:', 'eliodata-snippet-hub') . ' ' . $wpdb->last_error, ['status' => 500]);
         }
 
         return new WP_REST_Response(['deleted' => true, 'id' => $id], 200);

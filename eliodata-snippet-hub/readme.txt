@@ -1,7 +1,7 @@
 === Eliodata Snippet Hub ===
-Contributors: eliodata
+Contributors: fgelio, eliodata
 Donate link: https://eliodata.com
-Tags: snippets, ide, api, wordpress, eliodata
+Tags: snippets, ide, api, eliodata
 Requires at least: 5.0
 Tested up to: 6.9
 Stable tag: 2.0.0

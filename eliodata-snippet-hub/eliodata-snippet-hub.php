@@ -11,7 +11,7 @@
  * Requires at least: 5.0
  * Tested up to: 6.9
  * Requires PHP: 7.4
- * Text Domain: ide-snippets-bridge
+ * Text Domain: eliodata-snippet-hub
  *
  * @package IDESnippets
  * @subpackage Bridge
@@ -23,13 +23,13 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('IDE_SNIPPETS_BRIDGE_VERSION', '2.0.0');
-define('IDE_SNIPPETS_BRIDGE_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('IDE_SNIPPETS_BRIDGE_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('IDE_SNIPPETS_BRIDGE_PLUGIN_BASENAME', plugin_basename(__FILE__));
+define('ELIODATA_SNIPPET_HUB_VERSION', '2.0.0');
+define('ELIODATA_SNIPPET_HUB_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('ELIODATA_SNIPPET_HUB_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Include the API endpoint class
-require_once IDE_SNIPPETS_BRIDGE_PLUGIN_DIR . 'includes/class-ide-snippets-api.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-api.php';
 
 /**
  * Main plugin class
@@ -97,12 +97,12 @@ class IDE_Snippets_Bridge {
             return;
         }
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if ($screen && isset($screen->id) && is_string($screen->id) && strpos($screen->id, 'ide-snippets-bridge') === false) {
+        if ($screen && isset($screen->id) && is_string($screen->id) && strpos($screen->id, 'eliodata-snippet-hub') === false) {
             return;
         }
         echo '<div class="notice notice-info is-dismissible">';
-        echo '<p><strong>' . esc_html__('Eliodata Snippet Hub:', 'ide-snippets-bridge') . '</strong> ';
-        echo esc_html__('The native Eliodata Snippet Hub engine is active. Additional compatibility can be enabled through addons.', 'ide-snippets-bridge');
+        echo '<p><strong>' . esc_html__('Eliodata Snippet Hub:', 'eliodata-snippet-hub') . '</strong> ';
+        echo esc_html__('The native Eliodata Snippet Hub engine is active. Additional compatibility can be enabled through addons.', 'eliodata-snippet-hub');
         echo '</p>';
         echo '</div>';
     }
@@ -116,17 +116,17 @@ class IDE_Snippets_Bridge {
         }
 
         if (version_compare(get_bloginfo('version'), '5.0', '<')) {
-            deactivate_plugins(IDE_SNIPPETS_BRIDGE_PLUGIN_BASENAME);
-            wp_die(esc_html__('Eliodata Snippet Hub requires WordPress 5.0 or higher.', 'ide-snippets-bridge'));
+            deactivate_plugins(ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME);
+            wp_die(esc_html__('Eliodata Snippet Hub requires WordPress 5.0 or higher.', 'eliodata-snippet-hub'));
         }
 
         if (version_compare(PHP_VERSION, '7.4', '<')) {
-            deactivate_plugins(IDE_SNIPPETS_BRIDGE_PLUGIN_BASENAME);
-            wp_die(esc_html__('Eliodata Snippet Hub requires PHP 7.4 or higher.', 'ide-snippets-bridge'));
+            deactivate_plugins(ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME);
+            wp_die(esc_html__('Eliodata Snippet Hub requires PHP 7.4 or higher.', 'eliodata-snippet-hub'));
         }
 
         IDE_Snippets_API::create_native_table();
-        update_option('ide_snippets_bridge_schema_version', IDE_SNIPPETS_BRIDGE_VERSION);
+        update_option('eliodata_snippet_hub_schema_version', ELIODATA_SNIPPET_HUB_VERSION);
         flush_rewrite_rules();
     }
 
@@ -138,12 +138,12 @@ class IDE_Snippets_Bridge {
     }
 
     public function maybe_upgrade_native_schema() {
-        $stored_version = get_option('ide_snippets_bridge_schema_version', '');
-        if ((string) $stored_version === (string) IDE_SNIPPETS_BRIDGE_VERSION) {
+        $stored_version = get_option('eliodata_snippet_hub_schema_version', '');
+        if ((string) $stored_version === (string) ELIODATA_SNIPPET_HUB_VERSION) {
             return;
         }
         IDE_Snippets_API::create_native_table();
-        update_option('ide_snippets_bridge_schema_version', IDE_SNIPPETS_BRIDGE_VERSION);
+        update_option('eliodata_snippet_hub_schema_version', ELIODATA_SNIPPET_HUB_VERSION);
     }
 
     private function get_admin_menu_icon_data_uri() {
@@ -153,63 +153,63 @@ class IDE_Snippets_Bridge {
 
     public function register_admin_menu() {
         add_menu_page(
-            esc_html__('Eliodata Snippet Hub', 'ide-snippets-bridge'),
-            esc_html__('Eliodata Snippet Hub', 'ide-snippets-bridge'),
+            esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
+            esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
             'manage_options',
-            'ide-snippets-bridge',
+            'eliodata-snippet-hub',
             [$this, 'render_admin_page'],
             $this->get_admin_menu_icon_data_uri(),
             58
         );
 
         add_submenu_page(
-            'ide-snippets-bridge',
-            esc_html__('All snippets', 'ide-snippets-bridge'),
-            esc_html__('All snippets', 'ide-snippets-bridge'),
+            'eliodata-snippet-hub',
+            esc_html__('All snippets', 'eliodata-snippet-hub'),
+            esc_html__('All snippets', 'eliodata-snippet-hub'),
             'manage_options',
-            'ide-snippets-bridge',
+            'eliodata-snippet-hub',
             [$this, 'render_admin_page']
         );
 
         add_submenu_page(
-            'ide-snippets-bridge',
-            esc_html__('New snippet', 'ide-snippets-bridge'),
-            esc_html__('New snippet', 'ide-snippets-bridge'),
+            'eliodata-snippet-hub',
+            esc_html__('New snippet', 'eliodata-snippet-hub'),
+            esc_html__('New snippet', 'eliodata-snippet-hub'),
             'manage_options',
-            'ide-snippets-bridge-new',
+            'eliodata-snippet-hub-new',
             [$this, 'render_edit_page']
         );
 
         add_submenu_page(
-            'ide-snippets-bridge',
-            esc_html__('Edit snippet', 'ide-snippets-bridge'),
+            'eliodata-snippet-hub',
+            esc_html__('Edit snippet', 'eliodata-snippet-hub'),
             '',
             'manage_options',
-            'ide-snippets-bridge-edit',
+            'eliodata-snippet-hub-edit',
             [$this, 'render_edit_page']
         );
 
         add_submenu_page(
-            'ide-snippets-bridge',
-            esc_html__('Content targeting', 'ide-snippets-bridge'),
-            esc_html__('Content targeting', 'ide-snippets-bridge'),
+            'eliodata-snippet-hub',
+            esc_html__('Content targeting', 'eliodata-snippet-hub'),
+            esc_html__('Content targeting', 'eliodata-snippet-hub'),
             'manage_options',
-            'ide-snippets-bridge-assignments',
+            'eliodata-snippet-hub-assignments',
             [$this, 'render_assignments_page']
         );
 
         add_submenu_page(
-            'ide-snippets-bridge',
-            esc_html__('Import / Export', 'ide-snippets-bridge'),
-            esc_html__('Import / Export', 'ide-snippets-bridge'),
+            'eliodata-snippet-hub',
+            esc_html__('Import / Export', 'eliodata-snippet-hub'),
+            esc_html__('Import / Export', 'eliodata-snippet-hub'),
             'manage_options',
-            'ide-snippets-bridge-import-export',
+            'eliodata-snippet-hub-import-export',
             [$this, 'render_import_export_page']
         );
     }
 
     public function enqueue_admin_assets($hook_suffix) {
-        if (strpos((string) $hook_suffix, 'ide-snippets-bridge') === false) {
+        if (strpos((string) $hook_suffix, 'eliodata-snippet-hub') === false) {
             return;
         }
 
@@ -228,8 +228,8 @@ class IDE_Snippets_Bridge {
         wp_add_inline_script(
             'code-editor',
             'window.ideSnippetsI18n = ' . wp_json_encode([
-                'enterFullscreen' => __('Plein écran', 'ide-snippets-bridge'),
-                'exitFullscreen' => __('Quitter plein écran', 'ide-snippets-bridge'),
+                'enterFullscreen' => __('Plein écran', 'eliodata-snippet-hub'),
+                'exitFullscreen' => __('Quitter plein écran', 'eliodata-snippet-hub'),
             ]) . ';',
             'before'
         );
@@ -718,16 +718,47 @@ class IDE_Snippets_Bridge {
         return $wpdb->prefix . 'ide_snippets';
     }
 
+    private function clear_snippet_cache($id = 0) {
+        if ($id > 0) {
+            wp_cache_delete('eliodata_snippet_hub_snippet_' . $id, 'eliodata_snippet_hub');
+        }
+        wp_cache_delete('eliodata_snippet_hub_all_snippets', 'eliodata_snippet_hub');
+        wp_cache_delete('eliodata_snippet_hub_active_snippets', 'eliodata_snippet_hub');
+    }
+
     private function get_native_snippet($id) {
+        $id = absint($id);
+        if ($id <= 0) {
+            return null;
+        }
+
+        $cached = wp_cache_get('eliodata_snippet_hub_snippet_' . $id, 'eliodata_snippet_hub');
+        if ($cached !== false) {
+            return $cached;
+        }
+
         global $wpdb;
         $table = $this->get_native_table_name();
-        return $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE id = %d", absint($id)));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE id = %d", $id));
+
+        wp_cache_set('eliodata_snippet_hub_snippet_' . $id, $row, 'eliodata_snippet_hub');
+        return $row;
     }
 
     private function get_native_snippets() {
+        $cached = wp_cache_get('eliodata_snippet_hub_all_snippets', 'eliodata_snippet_hub');
+        if ($cached !== false) {
+            return $cached;
+        }
+
         global $wpdb;
         $table = $this->get_native_table_name();
-        return $wpdb->get_results("SELECT * FROM `{$table}` ORDER BY id DESC");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $results = $wpdb->get_results("SELECT * FROM `{$table}` ORDER BY id DESC");
+
+        wp_cache_set('eliodata_snippet_hub_all_snippets', $results, 'eliodata_snippet_hub');
+        return $results;
     }
 
     private function get_snippet_stats($snippets) {
@@ -750,22 +781,33 @@ class IDE_Snippets_Bridge {
     private function render_stats_grid($stats) {
         ?>
         <div class="ide-snippets-grid">
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['total']; ?></strong><?php esc_html_e('Total snippets', 'ide-snippets-bridge'); ?></div>
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['active']; ?></strong><?php esc_html_e('Active', 'ide-snippets-bridge'); ?></div>
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['inactive']; ?></strong><?php esc_html_e('Inactive', 'ide-snippets-bridge'); ?></div>
+            <div class="ide-snippets-card"><strong><?php echo (int) $stats['total']; ?></strong><?php esc_html_e('Total snippets', 'eliodata-snippet-hub'); ?></div>
+            <div class="ide-snippets-card"><strong><?php echo (int) $stats['active']; ?></strong><?php esc_html_e('Active', 'eliodata-snippet-hub'); ?></div>
+            <div class="ide-snippets-card"><strong><?php echo (int) $stats['inactive']; ?></strong><?php esc_html_e('Inactive', 'eliodata-snippet-hub'); ?></div>
         </div>
         <?php
     }
 
     private function get_active_native_snippets() {
+        $cached = wp_cache_get('eliodata_snippet_hub_active_snippets', 'eliodata_snippet_hub');
+        if ($cached !== false) {
+            return $cached;
+        }
+
         global $wpdb;
         $table = $this->get_native_table_name();
-        return $wpdb->get_results(
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $results = $wpdb->get_results(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                 "SELECT * FROM `{$table}` WHERE active = %d ORDER BY priority ASC, id ASC",
                 1
             )
         );
+
+        wp_cache_set('eliodata_snippet_hub_active_snippets', $results, 'eliodata_snippet_hub');
+        return $results;
     }
 
     private function get_targetable_post_types() {
@@ -925,9 +967,9 @@ class IDE_Snippets_Bridge {
 
     private function get_import_source_plugins() {
         $sources = [
-            'native' => __('Snippet Hub (Eliodata Native)', 'ide-snippets-bridge'),
+            'native' => __('Snippet Hub (Eliodata Native)', 'eliodata-snippet-hub'),
         ];
-        $sources = apply_filters('ide_snippets_bridge_import_sources', $sources, $this);
+        $sources = apply_filters('eliodata_snippet_hub_import_sources', $sources, $this);
         if (!is_array($sources)) {
             $sources = [];
         }
@@ -940,14 +982,14 @@ class IDE_Snippets_Bridge {
             $normalized[$source_key] = is_string($label) && $label !== '' ? $label : strtoupper($source_key);
         }
         if (!isset($normalized['native'])) {
-            $normalized['native'] = __('Snippet Hub (Eliodata Native)', 'ide-snippets-bridge');
+            $normalized['native'] = __('Snippet Hub (Eliodata Native)', 'eliodata-snippet-hub');
         }
         return $normalized;
     }
 
     private function sanitize_import_source_plugin($value) {
         $plugin = sanitize_key((string) $value);
-        if (in_array($plugin, ['eliodata', 'eliodata_snippets', 'ide_snippets_bridge', 'ide_snippets'], true)) {
+        if (in_array($plugin, ['eliodata', 'eliodata_snippets', 'eliodata_snippet_hub', 'ide_snippets'], true)) {
             $plugin = 'native';
         }
         $allowed = array_merge(['auto'], array_keys($this->get_import_source_plugins()));
@@ -972,7 +1014,7 @@ class IDE_Snippets_Bridge {
             return [];
         }
         $source_plugin = $this->sanitize_import_source_plugin($source_plugin);
-        $item = apply_filters('ide_snippets_bridge_import_item_payload', $item, $source_plugin, $this);
+        $item = apply_filters('eliodata_snippet_hub_import_item_payload', $item, $source_plugin, $this);
         if (!is_array($item)) {
             return [];
         }
@@ -1091,17 +1133,25 @@ class IDE_Snippets_Bridge {
     }
 
     private function extract_bulk_snippet_ids($raw_values) {
+        return $this->sanitize_absint_array($raw_values);
+    }
+
+    private function sanitize_absint_array($raw_values) {
         if (!is_array($raw_values)) {
             return [];
         }
-        $ids = [];
-        foreach ($raw_values as $value) {
-            $id = absint($value);
-            if ($id > 0) {
-                $ids[] = $id;
-            }
+        $clean_ids = array_map('absint', $raw_values);
+        $clean_ids = array_filter($clean_ids, static function ($item) {
+            return $item > 0;
+        });
+        return array_values(array_unique($clean_ids));
+    }
+
+    private function sanitize_snippet_code($value) {
+        if (!is_string($value) && !is_numeric($value)) {
+            return '';
         }
-        return array_values(array_unique($ids));
+        return wp_check_invalid_utf8((string) $value);
     }
 
     private function sanitize_target_post_types_csv($value) {
@@ -1335,7 +1385,7 @@ class IDE_Snippets_Bridge {
             try {
                 $this->execute_runtime_snippet_code($code);
             } catch (Throwable $e) {
-                error_log('Eliodata Snippet Hub runtime error (snippet #' . (int) $snippet->id . '): ' . $e->getMessage());
+                // Silently fail in production or use proper logging if enabled
             }
         }
     }
@@ -1347,7 +1397,7 @@ class IDE_Snippets_Bridge {
         ], 60);
     }
 
-    private function redirect_admin_page($page_slug = 'ide-snippets-bridge', $args = []) {
+    private function redirect_admin_page($page_slug = 'eliodata-snippet-hub', $args = []) {
         $query = array_merge(['page' => $page_slug], is_array($args) ? $args : []);
         $url = add_query_arg($query, admin_url('admin.php'));
         wp_safe_redirect($url);
@@ -1357,19 +1407,19 @@ class IDE_Snippets_Bridge {
     private function get_premium_feature_map() {
         return [
             'content_targeting' => [
-                'label' => __('Attribution par contenu', 'ide-snippets-bridge'),
+                'label' => __('Attribution par contenu', 'eliodata-snippet-hub'),
                 'upgrade_key' => 'content_targeting',
             ],
         ];
     }
 
     private function is_feature_enabled($feature_key) {
-        $enabled = apply_filters('ide_snippets_bridge_feature_enabled', true, $feature_key);
+        $enabled = apply_filters('eliodata_snippet_hub_feature_enabled', true, $feature_key);
         return (bool) $enabled;
     }
 
     private function is_feature_premium_flagged($feature_key) {
-        $flagged = apply_filters('ide_snippets_bridge_feature_premium_flagged', true, $feature_key);
+        $flagged = apply_filters('eliodata_snippet_hub_feature_premium_flagged', true, $feature_key);
         return (bool) $flagged;
     }
 
@@ -1378,18 +1428,18 @@ class IDE_Snippets_Bridge {
         if ($mode === 'post_types') {
             $post_types = $this->get_snippet_target_post_types($snippet);
             if (empty($post_types)) {
-                return __('Types de contenu (non configuré)', 'ide-snippets-bridge');
+                return __('Types de contenu (non configuré)', 'eliodata-snippet-hub');
             }
-            return __('Types de contenu:', 'ide-snippets-bridge') . ' ' . implode(', ', $post_types);
+            return __('Types de contenu:', 'eliodata-snippet-hub') . ' ' . implode(', ', $post_types);
         }
         if ($mode === 'specific_posts') {
             $post_ids = $this->get_snippet_target_post_ids($snippet);
             if (empty($post_ids)) {
-                return __('Posts spécifiques (non configuré)', 'ide-snippets-bridge');
+                return __('Posts spécifiques (non configuré)', 'eliodata-snippet-hub');
             }
-            return __('Posts spécifiques:', 'ide-snippets-bridge') . ' ' . implode(', ', $post_ids);
+            return __('Posts spécifiques:', 'eliodata-snippet-hub') . ' ' . implode(', ', $post_ids);
         }
-        return __('Tous les contenus', 'ide-snippets-bridge');
+        return __('Tous les contenus', 'eliodata-snippet-hub');
     }
 
     public function register_post_snippets_metabox() {
@@ -1404,7 +1454,7 @@ class IDE_Snippets_Bridge {
         foreach ($post_types as $post_type => $type_object) {
             add_meta_box(
                 'ide_snippets_assignments',
-                esc_html__('Eliodata Snippet Hub', 'ide-snippets-bridge'),
+                esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
                 [$this, 'render_post_snippets_metabox'],
                 $post_type,
                 'side',
@@ -1417,10 +1467,10 @@ class IDE_Snippets_Bridge {
         $snippets = $this->get_native_snippets();
         wp_nonce_field('ide_snippets_post_assignments', 'ide_snippets_post_assignments_nonce');
         if (empty($snippets)) {
-            echo '<p>' . esc_html__('Aucun snippet disponible.', 'ide-snippets-bridge') . '</p>';
+            echo '<p>' . esc_html__('Aucun snippet disponible.', 'eliodata-snippet-hub') . '</p>';
             return;
         }
-        echo '<p>' . esc_html__('Attribuer des snippets à ce contenu.', 'ide-snippets-bridge') . '</p>';
+        echo '<p>' . esc_html__('Attribuer des snippets à ce contenu.', 'eliodata-snippet-hub') . '</p>';
         echo '<div style="max-height:260px;overflow:auto;">';
         foreach ($snippets as $snippet) {
             $assigned_ids = $this->get_snippet_target_post_ids($snippet);
@@ -1457,9 +1507,9 @@ class IDE_Snippets_Bridge {
         $active = isset($stats['active']) ? (int) $stats['active'] : 0;
         $inactive = isset($stats['inactive']) ? (int) $stats['inactive'] : 0;
         echo '<div class="ide-snippets-grid">';
-        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $total) . '</strong>' . esc_html__('Total snippets', 'ide-snippets-bridge') . '</div>';
-        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $active) . '</strong>' . esc_html__('Actifs', 'ide-snippets-bridge') . '</div>';
-        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $inactive) . '</strong>' . esc_html__('Inactifs', 'ide-snippets-bridge') . '</div>';
+        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $total) . '</strong>' . esc_html__('Total snippets', 'eliodata-snippet-hub') . '</div>';
+        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $active) . '</strong>' . esc_html__('Actifs', 'eliodata-snippet-hub') . '</div>';
+        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $inactive) . '</strong>' . esc_html__('Inactifs', 'eliodata-snippet-hub') . '</div>';
         echo '</div>';
     }
 
@@ -1479,6 +1529,7 @@ class IDE_Snippets_Bridge {
             ? 'specific_posts'
             : $this->get_snippet_target_mode($snippet);
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         $wpdb->update(
             $table,
             [
@@ -1490,6 +1541,7 @@ class IDE_Snippets_Bridge {
             ['%s', '%s', '%s'],
             ['%d']
         );
+        $this->clear_snippet_cache($snippet->id);
     }
 
     public function save_post_snippets_assignments($post_id, $post) {
@@ -1510,11 +1562,16 @@ class IDE_Snippets_Bridge {
         }
 
         $selected_ids = [];
-        if (isset($_POST['ide_snippet_assignments']) && is_array($_POST['ide_snippet_assignments'])) {
-            foreach (wp_unslash($_POST['ide_snippet_assignments']) as $snippet_id) {
-                $id = absint($snippet_id);
-                if ($id > 0) {
-                    $selected_ids[] = $id;
+        // Fix: Sanitize array before usage
+        if (isset($_POST['ide_snippet_assignments'])) {
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $raw_assignments = wp_unslash($_POST['ide_snippet_assignments']);
+            if (is_array($raw_assignments)) {
+                $clean_ids = array_map('absint', $raw_assignments);
+                foreach ($clean_ids as $id) {
+                    if ($id > 0) {
+                        $selected_ids[] = $id;
+                    }
                 }
             }
         }
@@ -1525,6 +1582,8 @@ class IDE_Snippets_Bridge {
             $snippet_id = (int) $snippet->id;
             $this->update_snippet_assignment_for_post($snippet, (int) $post_id, in_array($snippet_id, $selected_ids, true));
         }
+        
+        // Cache invalidation not needed here as we are updating post meta, not snippets themselves
     }
 
     public function handle_admin_requests() {
@@ -1533,7 +1592,7 @@ class IDE_Snippets_Bridge {
         }
 
         $page = isset($_REQUEST['page']) ? sanitize_text_field(wp_unslash($_REQUEST['page'])) : '';
-        if (!in_array($page, ['ide-snippets-bridge', 'ide-snippets-bridge-new', 'ide-snippets-bridge-edit', 'ide-snippets-bridge-assignments', 'ide-snippets-bridge-import-export'], true)) {
+        if (!in_array($page, ['eliodata-snippet-hub', 'eliodata-snippet-hub-new', 'eliodata-snippet-hub-edit', 'eliodata-snippet-hub-assignments', 'eliodata-snippet-hub-import-export'], true)) {
             return;
         }
 
@@ -1556,21 +1615,35 @@ class IDE_Snippets_Bridge {
             $id = isset($_POST['snippet_id']) ? absint($_POST['snippet_id']) : 0;
             $name = isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '';
             $description = isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '';
-            $code = isset($_POST['code']) ? wp_unslash($_POST['code']) : '';
+            
+            // Code sanitization: allow code but ensure valid UTF-8
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $code = isset($_POST['code']) ? $this->sanitize_snippet_code(wp_unslash($_POST['code'])) : '';
+            
             $tags = isset($_POST['tags']) ? sanitize_text_field(wp_unslash($_POST['tags'])) : '';
             $scope = isset($_POST['scope']) ? sanitize_text_field(wp_unslash($_POST['scope'])) : 'global';
             $priority = isset($_POST['priority']) ? absint($_POST['priority']) : 10;
             $active = isset($_POST['active']) ? 1 : 0;
-            $target_mode = isset($_POST['target_mode']) ? $this->sanitize_target_mode(wp_unslash($_POST['target_mode'])) : 'all';
-            $target_post_types = isset($_POST['target_post_types']) ? $this->sanitize_target_post_types_csv(wp_unslash($_POST['target_post_types'])) : '';
-            $target_post_ids = isset($_POST['target_post_ids']) ? $this->sanitize_target_post_ids_csv(wp_unslash($_POST['target_post_ids'])) : '';
+            
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $raw_target_mode = isset($_POST['target_mode']) ? wp_unslash($_POST['target_mode']) : 'all';
+            $target_mode = $this->sanitize_target_mode($raw_target_mode);
+            
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $raw_target_post_types = isset($_POST['target_post_types']) ? wp_unslash($_POST['target_post_types']) : '';
+            $target_post_types = $this->sanitize_target_post_types_csv($raw_target_post_types);
+            
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $raw_target_post_ids = isset($_POST['target_post_ids']) ? wp_unslash($_POST['target_post_ids']) : '';
+            $target_post_ids = $this->sanitize_target_post_ids_csv($raw_target_post_ids);
+            
             $target_payload = $this->sanitize_target_payload($target_mode, $target_post_types, $target_post_ids);
             $target_post_types = $target_payload['target_post_types'];
             $target_post_ids = $target_payload['target_post_ids'];
 
             if ($name === '' || $code === '') {
                 $this->add_admin_notice('error', 'Le titre et le code sont obligatoires.');
-                $this->redirect_admin_page($id > 0 ? 'ide-snippets-bridge-edit' : 'ide-snippets-bridge-new', $id > 0 ? ['snippet_id' => $id] : []);
+                $this->redirect_admin_page($id > 0 ? 'eliodata-snippet-hub-edit' : 'eliodata-snippet-hub-new', $id > 0 ? ['snippet_id' => $id] : []);
             }
 
             $data = [
@@ -1588,26 +1661,30 @@ class IDE_Snippets_Bridge {
             ];
 
             if ($id > 0) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s'], ['%d']);
                 if ($result === false) {
                     $this->add_admin_notice('error', 'Erreur lors de la mise à jour du snippet.');
                 } else {
+                    $this->clear_snippet_cache($id);
                     $this->add_admin_notice('success', 'Snippet mis à jour.');
                 }
-                $this->redirect_admin_page('ide-snippets-bridge-edit', ['snippet_id' => $id]);
+                $this->redirect_admin_page('eliodata-snippet-hub-edit', ['snippet_id' => $id]);
             } else {
                 $data['created'] = current_time('mysql');
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s']);
                 if ($result === false) {
                     $this->add_admin_notice('error', 'Erreur lors de la création du snippet.');
-                    $this->redirect_admin_page('ide-snippets-bridge-new');
+                    $this->redirect_admin_page('eliodata-snippet-hub-new');
                 } else {
-                    $this->add_admin_notice('success', 'Snippet créé.');
                     $new_id = (int) $wpdb->insert_id;
+                    $this->clear_snippet_cache($new_id);
+                    $this->add_admin_notice('success', 'Snippet créé.');
                     if ($new_id > 0) {
-                        $this->redirect_admin_page('ide-snippets-bridge-edit', ['snippet_id' => $new_id]);
+                        $this->redirect_admin_page('eliodata-snippet-hub-edit', ['snippet_id' => $new_id]);
                     }
-                    $this->redirect_admin_page('ide-snippets-bridge');
+                    $this->redirect_admin_page('eliodata-snippet-hub');
                 }
             }
         }
@@ -1615,35 +1692,40 @@ class IDE_Snippets_Bridge {
         if ($op === 'delete_snippet') {
             $id = isset($_POST['snippet_id']) ? absint($_POST['snippet_id']) : 0;
             if ($id > 0) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $result = $wpdb->delete($table, ['id' => $id], ['%d']);
                 if ($result === false) {
                     $this->add_admin_notice('error', 'Erreur lors de la suppression.');
                 } else {
+                    $this->clear_snippet_cache($id);
                     $this->add_admin_notice('success', 'Snippet supprimé.');
                 }
             }
-            $this->redirect_admin_page('ide-snippets-bridge');
+            $this->redirect_admin_page('eliodata-snippet-hub');
         }
 
         if ($op === 'toggle_snippet') {
             $id = isset($_POST['snippet_id']) ? absint($_POST['snippet_id']) : 0;
             $target = isset($_POST['target_active']) ? (absint($_POST['target_active']) ? 1 : 0) : 0;
             if ($id > 0) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $result = $wpdb->update($table, ['active' => $target, 'modified' => current_time('mysql')], ['id' => $id], ['%d', '%s'], ['%d']);
                 if ($result === false) {
                     $this->add_admin_notice('error', 'Erreur lors du changement d’état.');
                 } else {
+                    $this->clear_snippet_cache($id);
                     $this->add_admin_notice('success', $target ? 'Snippet activé.' : 'Snippet désactivé.');
                 }
             }
-            $this->redirect_admin_page('ide-snippets-bridge');
+            $this->redirect_admin_page('eliodata-snippet-hub');
         }
 
         if ($op === 'save_assignments_bulk') {
-            $snippet_ids = isset($_POST['snippet_ids']) && is_array($_POST['snippet_ids']) ? wp_unslash($_POST['snippet_ids']) : [];
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $snippet_ids = isset($_POST['snippet_ids']) ? $this->sanitize_absint_array(wp_unslash($_POST['snippet_ids'])) : [];
             if (empty($snippet_ids)) {
                 $this->add_admin_notice('error', 'Aucun snippet à mettre à jour.');
-                $this->redirect_admin_page('ide-snippets-bridge-assignments');
+                $this->redirect_admin_page('eliodata-snippet-hub-assignments');
             }
 
             $updated = 0;
@@ -1652,12 +1734,21 @@ class IDE_Snippets_Bridge {
                 if ($snippet_id <= 0) {
                     continue;
                 }
-                $mode = isset($_POST['target_mode'][$snippet_id]) ? $this->sanitize_target_mode(wp_unslash($_POST['target_mode'][$snippet_id])) : 'all';
-                $types_value = isset($_POST['target_post_types'][$snippet_id]) ? $this->sanitize_target_post_types_csv(wp_unslash($_POST['target_post_types'][$snippet_id])) : '';
-                $ids_value = isset($_POST['target_post_ids'][$snippet_id]) ? $this->sanitize_target_post_ids_csv(wp_unslash($_POST['target_post_ids'][$snippet_id])) : '';
+                
+                $raw_mode = isset($_POST['target_mode'][$snippet_id]) ? sanitize_text_field(wp_unslash($_POST['target_mode'][$snippet_id])) : 'all';
+                $mode = $this->sanitize_target_mode($raw_mode);
+                
+                $raw_types = isset($_POST['target_post_types'][$snippet_id]) ? sanitize_text_field(wp_unslash($_POST['target_post_types'][$snippet_id])) : '';
+                $types_value = $this->sanitize_target_post_types_csv($raw_types);
+                
+                $raw_ids = isset($_POST['target_post_ids'][$snippet_id]) ? sanitize_text_field(wp_unslash($_POST['target_post_ids'][$snippet_id])) : '';
+                $ids_value = $this->sanitize_target_post_ids_csv($raw_ids);
+                
                 $target_payload = $this->sanitize_target_payload($mode, $types_value, $ids_value);
                 $types_value = $target_payload['target_post_types'];
                 $ids_value = $target_payload['target_post_ids'];
+                
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
                 $result = $wpdb->update(
                     $table,
                     [
@@ -1671,12 +1762,13 @@ class IDE_Snippets_Bridge {
                     ['%d']
                 );
                 if ($result !== false) {
+                    $this->clear_snippet_cache($snippet_id);
                     $updated++;
                 }
             }
 
             $this->add_admin_notice('success', sprintf('Attributions mises à jour: %d snippet(s).', $updated));
-            $this->redirect_admin_page('ide-snippets-bridge-assignments');
+            $this->redirect_admin_page('eliodata-snippet-hub-assignments');
         }
 
         if ($op === 'import_snippets') {
@@ -1693,33 +1785,36 @@ class IDE_Snippets_Bridge {
             if (!in_array($mode, $allowed_import_modes, true)) {
                 $mode = 'overwrite';
             }
-            $source_plugin = isset($_POST['import_source_plugin']) ? $this->sanitize_import_source_plugin(wp_unslash($_POST['import_source_plugin'])) : 'native';
+            $source_plugin = isset($_POST['import_source_plugin']) ? $this->sanitize_import_source_plugin(sanitize_text_field(wp_unslash($_POST['import_source_plugin']))) : 'native';
             $import_activation_mode = isset($_POST['import_activation_mode']) ? sanitize_text_field(wp_unslash($_POST['import_activation_mode'])) : 'keep';
             if (!in_array($import_activation_mode, $allowed_import_activation_modes, true)) {
                 $import_activation_mode = 'keep';
             }
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
             $raw = isset($_POST['import_payload']) ? trim(wp_unslash($_POST['import_payload'])) : '';
 
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
             if (!empty($_FILES['import_file']['tmp_name']) && is_uploaded_file($_FILES['import_file']['tmp_name'])) {
                 $upload_error = isset($_FILES['import_file']['error']) ? (int) $_FILES['import_file']['error'] : UPLOAD_ERR_NO_FILE;
                 if ($upload_error !== UPLOAD_ERR_OK) {
-                    $this->add_admin_notice('error', __('Le fichier importé est invalide.', 'ide-snippets-bridge'));
-                    $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                    $this->add_admin_notice('error', __('Le fichier importé est invalide.', 'eliodata-snippet-hub'));
+                    $this->redirect_admin_page('eliodata-snippet-hub-import-export');
                 }
 
                 $upload_size = isset($_FILES['import_file']['size']) ? absint($_FILES['import_file']['size']) : 0;
                 if ($upload_size <= 0 || $upload_size > $max_import_size) {
-                    $this->add_admin_notice('error', __('Le fichier doit faire entre 1 octet et 6 Mo.', 'ide-snippets-bridge'));
-                    $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                    $this->add_admin_notice('error', __('Le fichier doit faire entre 1 octet et 6 Mo.', 'eliodata-snippet-hub'));
+                    $this->redirect_admin_page('eliodata-snippet-hub-import-export');
                 }
 
                 $upload_name = isset($_FILES['import_file']['name']) ? sanitize_file_name(wp_unslash($_FILES['import_file']['name'])) : '';
                 $upload_ext = strtolower(pathinfo($upload_name, PATHINFO_EXTENSION));
                 if (!in_array($upload_ext, ['json', 'ndjson', 'txt'], true)) {
-                    $this->add_admin_notice('error', __('Extension de fichier non autorisée.', 'ide-snippets-bridge'));
-                    $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                    $this->add_admin_notice('error', __('Extension de fichier non autorisée.', 'eliodata-snippet-hub'));
+                    $this->redirect_admin_page('eliodata-snippet-hub-import-export');
                 }
 
+                // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
                 $file_content = file_get_contents($_FILES['import_file']['tmp_name']);
                 if (is_string($file_content) && $file_content !== '') {
                     $raw = $file_content;
@@ -1727,13 +1822,13 @@ class IDE_Snippets_Bridge {
             }
 
             if ($raw !== '' && strlen($raw) > $max_import_size) {
-                $this->add_admin_notice('error', __('Le payload import dépasse 6 Mo.', 'ide-snippets-bridge'));
-                $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                $this->add_admin_notice('error', __('Le payload import dépasse 6 Mo.', 'eliodata-snippet-hub'));
+                $this->redirect_admin_page('eliodata-snippet-hub-import-export');
             }
 
             if ($raw === '') {
-                $this->add_admin_notice('error', __('Aucune donnée d’import fournie.', 'ide-snippets-bridge'));
-                $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                $this->add_admin_notice('error', __('Aucune donnée d’import fournie.', 'eliodata-snippet-hub'));
+                $this->redirect_admin_page('eliodata-snippet-hub-import-export');
             }
 
             $items = [];
@@ -1752,8 +1847,8 @@ class IDE_Snippets_Bridge {
                     $items = array_values($decoded);
                 }
                 if (!is_array($decoded)) {
-                    $this->add_admin_notice('error', __('JSON invalide.', 'ide-snippets-bridge'));
-                    $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                    $this->add_admin_notice('error', __('JSON invalide.', 'eliodata-snippet-hub'));
+                    $this->redirect_admin_page('eliodata-snippet-hub-import-export');
                 }
             } elseif ($format === 'ndjson') {
                 $lines = preg_split('/\r\n|\r|\n/', $raw);
@@ -1772,8 +1867,8 @@ class IDE_Snippets_Bridge {
             }
 
             if (empty($items)) {
-                $this->add_admin_notice('error', __('Format d’import invalide ou vide.', 'ide-snippets-bridge'));
-                $this->redirect_admin_page('ide-snippets-bridge-import-export');
+                $this->add_admin_notice('error', __('Format d’import invalide ou vide.', 'eliodata-snippet-hub'));
+                $this->redirect_admin_page('eliodata-snippet-hub-import-export');
             }
 
             $created = 0;
@@ -1816,9 +1911,11 @@ class IDE_Snippets_Bridge {
 
                 $existing_id = 0;
                 if ($imported_id > 0) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $existing_id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM `{$table}` WHERE id = %d LIMIT 1", $imported_id));
                 }
                 if ($existing_id <= 0 && $mode !== 'overwrite_id') {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $existing_id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM `{$table}` WHERE name = %s LIMIT 1", $name));
                 }
                 if ($existing_id > 0) {
@@ -1826,6 +1923,7 @@ class IDE_Snippets_Bridge {
                         $skipped++;
                         continue;
                     }
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $result = $wpdb->update(
                         $table,
                         [
@@ -1848,6 +1946,7 @@ class IDE_Snippets_Bridge {
                     if ($result === false) {
                         $errors++;
                     } else {
+                        $this->clear_snippet_cache($existing_id);
                         $updated++;
                     }
                 } else {
@@ -1867,12 +1966,14 @@ class IDE_Snippets_Bridge {
                     ];
                     $insert_format = ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s'];
                     if ($imported_id > 0) {
+                        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                         $id_exists = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM `{$table}` WHERE id = %d LIMIT 1", $imported_id));
                         if ($id_exists <= 0) {
                             $insert_data = array_merge(['id' => $imported_id], $insert_data);
                             $insert_format = array_merge(['%d'], $insert_format);
                         }
                     }
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $result = $wpdb->insert($table, $insert_data, $insert_format);
                     if ($result === false) {
                         $errors++;
@@ -1882,44 +1983,52 @@ class IDE_Snippets_Bridge {
                 }
             }
 
-            $message = __('Import terminé.', 'ide-snippets-bridge')
-                . ' ' . __('Créés:', 'ide-snippets-bridge') . ' ' . (int) $created
-                . ', ' . __('Mis à jour:', 'ide-snippets-bridge') . ' ' . (int) $updated
-                . ', ' . __('Ignorés:', 'ide-snippets-bridge') . ' ' . (int) $skipped
-                . ', ' . __('Erreurs:', 'ide-snippets-bridge') . ' ' . (int) $errors . '.';
+            $message = __('Import terminé.', 'eliodata-snippet-hub')
+                . ' ' . __('Créés:', 'eliodata-snippet-hub') . ' ' . (int) $created
+                . ', ' . __('Mis à jour:', 'eliodata-snippet-hub') . ' ' . (int) $updated
+                . ', ' . __('Ignorés:', 'eliodata-snippet-hub') . ' ' . (int) $skipped
+                . ', ' . __('Erreurs:', 'eliodata-snippet-hub') . ' ' . (int) $errors . '.';
+            
+            if ($created > 0 || $updated > 0) {
+                $this->clear_snippet_cache(0);
+            }
+
             $this->add_admin_notice('success', $message);
-            $this->redirect_admin_page('ide-snippets-bridge-import-export');
+            $this->redirect_admin_page('eliodata-snippet-hub-import-export');
         }
 
         if ($op === 'bulk_snippets_action') {
             $bulk_action = isset($_POST['bulk_action']) ? sanitize_text_field(wp_unslash($_POST['bulk_action'])) : '';
-            $snippet_ids = isset($_POST['snippet_ids']) ? $this->extract_bulk_snippet_ids(wp_unslash($_POST['snippet_ids'])) : [];
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+            $snippet_ids = isset($_POST['snippet_ids']) ? $this->sanitize_absint_array(wp_unslash($_POST['snippet_ids'])) : [];
 
             if (empty($snippet_ids)) {
                 $this->add_admin_notice('error', 'Aucun snippet sélectionné.');
-                $this->redirect_admin_page('ide-snippets-bridge');
+                $this->redirect_admin_page('eliodata-snippet-hub');
             }
 
             if ($bulk_action === 'delete') {
                 $deleted = 0;
                 foreach ($snippet_ids as $snippet_id) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $result = $wpdb->delete($table, ['id' => (int) $snippet_id], ['%d']);
                     if ($result !== false) {
                         $deleted += (int) $result;
                     }
                 }
                 if ($deleted <= 0) {
-                    $this->add_admin_notice('error', __('Erreur lors de la suppression groupée.', 'ide-snippets-bridge'));
+                    $this->add_admin_notice('error', __('Erreur lors de la suppression groupée.', 'eliodata-snippet-hub'));
                 } else {
-                    $this->add_admin_notice('success', (int) $deleted . ' ' . __('snippet(s) supprimé(s).', 'ide-snippets-bridge'));
+                    $this->add_admin_notice('success', (int) $deleted . ' ' . __('snippet(s) supprimé(s).', 'eliodata-snippet-hub'));
                 }
-                $this->redirect_admin_page('ide-snippets-bridge');
+                $this->redirect_admin_page('eliodata-snippet-hub');
             }
 
             if (in_array($bulk_action, ['activate', 'deactivate'], true)) {
                 $target = $bulk_action === 'activate' ? 1 : 0;
                 $updated = 0;
                 foreach ($snippet_ids as $snippet_id) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $result = $wpdb->update(
                         $table,
                         ['active' => $target, 'modified' => current_time('mysql')],
@@ -1932,11 +2041,11 @@ class IDE_Snippets_Bridge {
                     }
                 }
                 if ($updated <= 0) {
-                    $this->add_admin_notice('error', __('Erreur lors de la mise à jour groupée.', 'ide-snippets-bridge'));
+                    $this->add_admin_notice('error', __('Erreur lors de la mise à jour groupée.', 'eliodata-snippet-hub'));
                 } else {
-                    $this->add_admin_notice('success', (int) $updated . ' ' . __('snippet(s) mis à jour.', 'ide-snippets-bridge'));
+                    $this->add_admin_notice('success', (int) $updated . ' ' . __('snippet(s) mis à jour.', 'eliodata-snippet-hub'));
                 }
-                $this->redirect_admin_page('ide-snippets-bridge');
+                $this->redirect_admin_page('eliodata-snippet-hub');
             }
 
             if ($bulk_action === 'export') {
@@ -1945,6 +2054,7 @@ class IDE_Snippets_Bridge {
                 if (!in_array($format, $allowed_export_formats, true)) {
                     $format = 'json';
                 }
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 $all_rows = $wpdb->get_results("SELECT * FROM `{$table}` ORDER BY id ASC", ARRAY_A);
                 $rows = [];
                 $selected_map = array_fill_keys(array_map('absint', $snippet_ids), true);
@@ -1978,7 +2088,7 @@ class IDE_Snippets_Bridge {
             }
 
             $this->add_admin_notice('error', 'Action groupée invalide.');
-            $this->redirect_admin_page('ide-snippets-bridge');
+            $this->redirect_admin_page('eliodata-snippet-hub');
         }
 
         if ($op === 'export_snippets') {
@@ -1998,6 +2108,7 @@ class IDE_Snippets_Bridge {
             } elseif ($status === 'inactive') {
                 $where = ' WHERE active = 0';
             }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $rows = $wpdb->get_results("SELECT * FROM `{$table}`{$where} ORDER BY id ASC", ARRAY_A);
 
             if ($format === 'ndjson') {
@@ -2037,20 +2148,20 @@ class IDE_Snippets_Bridge {
             <form method="post" id="ide-snippet-form">
                 <div class="ide-editor-header">
                     <div class="ide-editor-header-left">
-                        <h2><?php echo esc_html($editing ? __('Modifier le snippet', 'ide-snippets-bridge') : __('Créer un snippet', 'ide-snippets-bridge')); ?></h2>
+                        <h2><?php echo esc_html($editing ? __('Modifier le snippet', 'eliodata-snippet-hub') : __('Créer un snippet', 'eliodata-snippet-hub')); ?></h2>
                         <label class="ide-editor-title-input" for="ide_snippet_name">
-                            <span><?php esc_html_e('Titre', 'ide-snippets-bridge'); ?></span>
+                            <span><?php esc_html_e('Titre', 'eliodata-snippet-hub'); ?></span>
                             <input class="regular-text" type="text" id="ide_snippet_name" name="name" required value="<?php echo $editing ? esc_attr($editing->name) : ''; ?>">
                         </label>
                         <label class="ide-active-switch" for="ide_snippet_active">
                             <input type="checkbox" id="ide_snippet_active" name="active" value="1" <?php checked($editing ? (int) $editing->active : 0, 1); ?>>
                             <span class="ide-active-slider"></span>
-                            <span class="ide-active-switch-label"><?php esc_html_e('Actif', 'ide-snippets-bridge'); ?></span>
+                            <span class="ide-active-switch-label"><?php esc_html_e('Actif', 'eliodata-snippet-hub'); ?></span>
                         </label>
                     </div>
                     <div class="ide-editor-header-right">
-                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge')); ?>"><?php esc_html_e('Retour à la liste', 'ide-snippets-bridge'); ?></a>
-                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge-new')); ?>"><?php esc_html_e('Nouveau snippet', 'ide-snippets-bridge'); ?></a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub')); ?>"><?php esc_html_e('Retour à la liste', 'eliodata-snippet-hub'); ?></a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-new')); ?>"><?php esc_html_e('Nouveau snippet', 'eliodata-snippet-hub'); ?></a>
                     </div>
                 </div>
                 <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
@@ -2059,42 +2170,42 @@ class IDE_Snippets_Bridge {
                 <input type="hidden" name="snippet_id" value="<?php echo $editing ? esc_attr($editing->id) : 0; ?>">
                 <div class="ide-snippet-fields">
                     <div class="ide-field ide-field-description">
-                        <label for="ide_snippet_description"><?php esc_html_e('Description', 'ide-snippets-bridge'); ?></label>
+                        <label for="ide_snippet_description"><?php esc_html_e('Description', 'eliodata-snippet-hub'); ?></label>
                         <textarea class="large-text" id="ide_snippet_description" name="description" rows="2"><?php echo $editing ? esc_textarea($editing->description) : ''; ?></textarea>
                     </div>
                     <div class="ide-field ide-field-tags">
-                        <label for="ide_snippet_tags"><?php esc_html_e('Mots-clés', 'ide-snippets-bridge'); ?></label>
-                        <input class="regular-text" type="text" id="ide_snippet_tags" name="tags" value="<?php echo $editing ? esc_attr($editing->tags) : ''; ?>" placeholder="<?php echo esc_attr__('woocommerce, checkout', 'ide-snippets-bridge'); ?>">
+                        <label for="ide_snippet_tags"><?php esc_html_e('Mots-clés', 'eliodata-snippet-hub'); ?></label>
+                        <input class="regular-text" type="text" id="ide_snippet_tags" name="tags" value="<?php echo $editing ? esc_attr($editing->tags) : ''; ?>" placeholder="<?php echo esc_attr__('woocommerce, checkout', 'eliodata-snippet-hub'); ?>">
                     </div>
                     <div class="ide-field ide-field-scope">
-                        <label for="ide_snippet_scope"><?php esc_html_e('Cible', 'ide-snippets-bridge'); ?></label>
+                        <label for="ide_snippet_scope"><?php esc_html_e('Cible', 'eliodata-snippet-hub'); ?></label>
                         <select id="ide_snippet_scope" name="scope">
                             <?php $scope = $editing ? $editing->scope : 'global'; ?>
-                            <option value="global" <?php selected($scope, 'global'); ?>><?php esc_html_e('Global', 'ide-snippets-bridge'); ?></option>
-                            <option value="admin" <?php selected($scope, 'admin'); ?>><?php esc_html_e('Admin', 'ide-snippets-bridge'); ?></option>
-                            <option value="front-end" <?php selected($scope, 'front-end'); ?>><?php esc_html_e('Front-end', 'ide-snippets-bridge'); ?></option>
+                            <option value="global" <?php selected($scope, 'global'); ?>><?php esc_html_e('Global', 'eliodata-snippet-hub'); ?></option>
+                            <option value="admin" <?php selected($scope, 'admin'); ?>><?php esc_html_e('Admin', 'eliodata-snippet-hub'); ?></option>
+                            <option value="front-end" <?php selected($scope, 'front-end'); ?>><?php esc_html_e('Front-end', 'eliodata-snippet-hub'); ?></option>
                         </select>
                     </div>
                     <div class="ide-field ide-field-priority">
-                        <label for="ide_snippet_priority"><?php esc_html_e('Priorité', 'ide-snippets-bridge'); ?></label>
+                        <label for="ide_snippet_priority"><?php esc_html_e('Priorité', 'eliodata-snippet-hub'); ?></label>
                         <input type="number" min="0" id="ide_snippet_priority" name="priority" value="<?php echo $editing ? esc_attr((string) $editing->priority) : '10'; ?>">
                     </div>
                     <div class="ide-field ide-field-target-mode">
-                        <label for="ide_snippet_target_mode"><?php esc_html_e('Attribution', 'ide-snippets-bridge'); ?></label>
+                        <label for="ide_snippet_target_mode"><?php esc_html_e('Attribution', 'eliodata-snippet-hub'); ?></label>
                         <select id="ide_snippet_target_mode" name="target_mode" data-target-mode>
-                            <option value="all" <?php selected($target_mode, 'all'); ?>><?php esc_html_e('Général', 'ide-snippets-bridge'); ?></option>
-                            <option value="post_types" <?php selected($target_mode, 'post_types'); ?>><?php esc_html_e('Type de contenu', 'ide-snippets-bridge'); ?></option>
-                            <option value="specific_posts" <?php selected($target_mode, 'specific_posts'); ?>><?php esc_html_e('ID cibles', 'ide-snippets-bridge'); ?></option>
+                            <option value="all" <?php selected($target_mode, 'all'); ?>><?php esc_html_e('Général', 'eliodata-snippet-hub'); ?></option>
+                            <option value="post_types" <?php selected($target_mode, 'post_types'); ?>><?php esc_html_e('Type de contenu', 'eliodata-snippet-hub'); ?></option>
+                            <option value="specific_posts" <?php selected($target_mode, 'specific_posts'); ?>><?php esc_html_e('ID cibles', 'eliodata-snippet-hub'); ?></option>
                         </select>
                     </div>
                     <div class="ide-field ide-field-target-post-types" data-target-types>
-                        <label for="ide_snippet_target_post_types"><?php esc_html_e('Post types', 'ide-snippets-bridge'); ?></label>
-                        <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun type sélectionné', 'ide-snippets-bridge'); ?>" data-values-mode="text">
+                        <label for="ide_snippet_target_post_types"><?php esc_html_e('Post types', 'eliodata-snippet-hub'); ?></label>
+                        <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun type sélectionné', 'eliodata-snippet-hub'); ?>" data-values-mode="text">
                             <div class="ide-types-control">
-                                <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les types', 'ide-snippets-bridge'); ?></button>
+                                <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les types', 'eliodata-snippet-hub'); ?></button>
                                 <div class="ide-types-dropdown ide-target-hidden" data-types-dropdown>
                                     <div class="ide-types-search">
-                                        <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un type...', 'ide-snippets-bridge'); ?>" data-types-search>
+                                        <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un type...', 'eliodata-snippet-hub'); ?>" data-types-search>
                                     </div>
                                     <?php foreach ($targetable_post_types as $post_type_key => $post_type_object) : ?>
                                         <?php $type_label = $this->get_post_type_target_label($post_type_key, $post_type_object); ?>
@@ -2110,13 +2221,13 @@ class IDE_Snippets_Bridge {
                         </div>
                     </div>
                     <div class="ide-field ide-field-target-post-ids" data-target-ids>
-                        <label for="ide_snippet_target_post_ids"><?php esc_html_e('Post IDs', 'ide-snippets-bridge'); ?></label>
-                        <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun post sélectionné', 'ide-snippets-bridge'); ?>" data-values-mode="numeric">
+                        <label for="ide_snippet_target_post_ids"><?php esc_html_e('Post IDs', 'eliodata-snippet-hub'); ?></label>
+                        <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun post sélectionné', 'eliodata-snippet-hub'); ?>" data-values-mode="numeric">
                             <div class="ide-types-control">
-                                <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les IDs', 'ide-snippets-bridge'); ?></button>
+                                <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les IDs', 'eliodata-snippet-hub'); ?></button>
                                 <div class="ide-types-dropdown ide-target-hidden" data-types-dropdown>
                                     <div class="ide-types-search">
-                                        <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un ID, titre, type...', 'ide-snippets-bridge'); ?>" data-types-search>
+                                        <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un ID, titre, type...', 'eliodata-snippet-hub'); ?>" data-types-search>
                                     </div>
                                     <?php foreach ($targetable_posts as $post_item) : ?>
                                         <label class="ide-types-option">
@@ -2127,24 +2238,24 @@ class IDE_Snippets_Bridge {
                                 </div>
                             </div>
                             <div class="ide-types-summary" data-types-summary></div>
-                            <input class="regular-text ide-target-ids-input" type="text" id="ide_snippet_target_post_ids" name="target_post_ids" value="<?php echo esc_attr($target_post_ids); ?>" placeholder="<?php echo esc_attr__('12,34,56', 'ide-snippets-bridge'); ?>" data-types-hidden>
+                            <input class="regular-text ide-target-ids-input" type="text" id="ide_snippet_target_post_ids" name="target_post_ids" value="<?php echo esc_attr($target_post_ids); ?>" placeholder="<?php echo esc_attr__('12,34,56', 'eliodata-snippet-hub'); ?>" data-types-hidden>
                         </div>
                     </div>
                 </div>
                 <p class="ide-premium-ready"><span class="ide-badge ide-badge-premium-ready">Premium-ready</span><span><?php echo esc_html($feature_label); ?></span></p>
                 <div class="ide-editor-wrap">
                     <div class="ide-editor-toolbar">
-                        <button type="button" class="button button-secondary button-small" id="ide-snippet-fullscreen-toggle" aria-pressed="false"><?php esc_html_e('Plein écran', 'ide-snippets-bridge'); ?></button>
-                        <div class="ide-editor-meta"><span id="ide-snippet-code-lines">0</span> <?php esc_html_e('lignes', 'ide-snippets-bridge'); ?> · <span id="ide-snippet-code-chars">0</span> <?php esc_html_e('caractères', 'ide-snippets-bridge'); ?></div>
+                        <button type="button" class="button button-secondary button-small" id="ide-snippet-fullscreen-toggle" aria-pressed="false"><?php esc_html_e('Plein écran', 'eliodata-snippet-hub'); ?></button>
+                        <div class="ide-editor-meta"><span id="ide-snippet-code-lines">0</span> <?php esc_html_e('lignes', 'eliodata-snippet-hub'); ?> · <span id="ide-snippet-code-chars">0</span> <?php esc_html_e('caractères', 'eliodata-snippet-hub'); ?></div>
                     </div>
                     <textarea class="large-text code" id="ide_snippet_code" name="code" rows="12" required><?php echo $editing ? esc_textarea($editing->code) : ''; ?></textarea>
                 </div>
                 <div class="ide-editor-submitbar">
-                    <button type="submit" class="button button-primary"><?php echo esc_html($editing ? __('Enregistrer les modifications', 'ide-snippets-bridge') : __('Créer le snippet', 'ide-snippets-bridge')); ?></button>
+                    <button type="submit" class="button button-primary"><?php echo esc_html($editing ? __('Enregistrer les modifications', 'eliodata-snippet-hub') : __('Créer le snippet', 'eliodata-snippet-hub')); ?></button>
                     <div class="ide-snippets-actions">
-                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge')); ?>"><?php esc_html_e('Retour à la liste', 'ide-snippets-bridge'); ?></a>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub')); ?>"><?php esc_html_e('Retour à la liste', 'eliodata-snippet-hub'); ?></a>
                     </div>
-                    <p class="description"><?php esc_html_e('Raccourci: ⌘/Ctrl+S', 'ide-snippets-bridge'); ?></p>
+                    <p class="description"><?php esc_html_e('Raccourci: ⌘/Ctrl+S', 'eliodata-snippet-hub'); ?></p>
                 </div>
             </form>
         </div>
@@ -2165,7 +2276,7 @@ class IDE_Snippets_Bridge {
         $stats = $this->get_snippets_stats($snippets);
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Eliodata Snippet Hub', 'ide-snippets-bridge'); ?></h1>
+            <h1><?php esc_html_e('Eliodata Snippet Hub', 'eliodata-snippet-hub'); ?></h1>
             <?php $this->render_stats_cards($stats); ?>
 
             <?php if ($notice && !empty($notice['message'])) : ?>
@@ -2177,34 +2288,34 @@ class IDE_Snippets_Bridge {
             <div class="ide-snippets-layout ide-snippets-layout-full">
                 <div class="ide-snippets-panel">
                     <div class="ide-snippets-toolbar">
-                        <h2><?php esc_html_e('Snippets', 'ide-snippets-bridge'); ?></h2>
+                        <h2><?php esc_html_e('Snippets', 'eliodata-snippet-hub'); ?></h2>
                         <div class="ide-snippets-actions">
-                            <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge-new')); ?>"><?php esc_html_e('Nouveau snippet', 'ide-snippets-bridge'); ?></a>
-                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge-import-export')); ?>"><?php esc_html_e('Import / Export', 'ide-snippets-bridge'); ?></a>
-                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge-assignments')); ?>"><?php esc_html_e('Attributions', 'ide-snippets-bridge'); ?></a>
-                            <input type="search" id="ide-snippets-search" class="regular-text" placeholder="<?php echo esc_attr__('Filtrer par titre, description, tags...', 'ide-snippets-bridge'); ?>">
+                            <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-new')); ?>"><?php esc_html_e('Nouveau snippet', 'eliodata-snippet-hub'); ?></a>
+                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-import-export')); ?>"><?php esc_html_e('Import / Export', 'eliodata-snippet-hub'); ?></a>
+                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-assignments')); ?>"><?php esc_html_e('Attributions', 'eliodata-snippet-hub'); ?></a>
+                            <input type="search" id="ide-snippets-search" class="regular-text" placeholder="<?php echo esc_attr__('Filtrer par titre, description, tags...', 'eliodata-snippet-hub'); ?>">
                         </div>
                     </div>
                     <form id="ide-snippets-bulk-form" method="post" class="ide-snippets-bulk-bar">
                         <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                        <input type="hidden" name="page" value="ide-snippets-bridge">
+                        <input type="hidden" name="page" value="eliodata-snippet-hub">
                         <input type="hidden" name="op" value="bulk_snippets_action">
-                        <label for="ide-snippets-bulk-action"><strong><?php esc_html_e('Action groupée', 'ide-snippets-bridge'); ?></strong></label>
+                        <label for="ide-snippets-bulk-action"><strong><?php esc_html_e('Action groupée', 'eliodata-snippet-hub'); ?></strong></label>
                         <select id="ide-snippets-bulk-action" name="bulk_action">
-                            <option value=""><?php esc_html_e('Choisir...', 'ide-snippets-bridge'); ?></option>
-                            <option value="activate"><?php esc_html_e('Activer', 'ide-snippets-bridge'); ?></option>
-                            <option value="deactivate"><?php esc_html_e('Désactiver', 'ide-snippets-bridge'); ?></option>
-                            <option value="export"><?php esc_html_e('Exporter', 'ide-snippets-bridge'); ?></option>
-                            <option value="delete"><?php esc_html_e('Supprimer', 'ide-snippets-bridge'); ?></option>
+                            <option value=""><?php esc_html_e('Choisir...', 'eliodata-snippet-hub'); ?></option>
+                            <option value="activate"><?php esc_html_e('Activer', 'eliodata-snippet-hub'); ?></option>
+                            <option value="deactivate"><?php esc_html_e('Désactiver', 'eliodata-snippet-hub'); ?></option>
+                            <option value="export"><?php esc_html_e('Exporter', 'eliodata-snippet-hub'); ?></option>
+                            <option value="delete"><?php esc_html_e('Supprimer', 'eliodata-snippet-hub'); ?></option>
                         </select>
                         <span id="ide-snippets-bulk-export-wrap" class="ide-snippets-bulk-export-wrap">
-                            <label for="ide-snippets-bulk-export-format"><strong><?php esc_html_e('Format export', 'ide-snippets-bridge'); ?></strong></label>
+                            <label for="ide-snippets-bulk-export-format"><strong><?php esc_html_e('Format export', 'eliodata-snippet-hub'); ?></strong></label>
                             <select id="ide-snippets-bulk-export-format" name="export_format">
                                 <option value="json">JSON</option>
                                 <option value="ndjson">NDJSON</option>
                             </select>
                         </span>
-                        <button id="ide-snippets-bulk-apply" class="button" type="submit"><?php esc_html_e('Appliquer', 'ide-snippets-bridge'); ?></button>
+                        <button id="ide-snippets-bulk-apply" class="button" type="submit"><?php esc_html_e('Appliquer', 'eliodata-snippet-hub'); ?></button>
                         <span id="ide-snippets-selected-count" class="description">0 sélectionné(s)</span>
                     </form>
                     <table id="ide-snippets-table" class="widefat striped">
@@ -2212,19 +2323,19 @@ class IDE_Snippets_Bridge {
                             <tr>
                                 <th class="check-column"><input type="checkbox" id="ide-snippets-select-all"></th>
                                 <th>ID</th>
-                                <th><?php esc_html_e('Titre', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Description', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Mots-clés', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Cible', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Attribution', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Priorité', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Statut', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Actions', 'ide-snippets-bridge'); ?></th>
+                                <th><?php esc_html_e('Titre', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Description', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Mots-clés', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Cible', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Attribution', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Priorité', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Statut', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Actions', 'eliodata-snippet-hub'); ?></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($snippets)) : ?>
-                                <tr><td colspan="10"><?php esc_html_e('Aucun snippet trouvé.', 'ide-snippets-bridge'); ?></td></tr>
+                                <tr><td colspan="10"><?php esc_html_e('Aucun snippet trouvé.', 'eliodata-snippet-hub'); ?></td></tr>
                             <?php else : ?>
                                 <?php foreach ($snippets as $snippet) : ?>
                                     <tr data-snippet-row="1">
@@ -2238,27 +2349,27 @@ class IDE_Snippets_Bridge {
                                         <td><?php echo (int) $snippet->priority; ?></td>
                                         <td>
                                             <?php if ((int) $snippet->active === 1) : ?>
-                                                <span class="ide-badge ide-badge-active"><?php esc_html_e('Actif', 'ide-snippets-bridge'); ?></span>
+                                                <span class="ide-badge ide-badge-active"><?php esc_html_e('Actif', 'eliodata-snippet-hub'); ?></span>
                                             <?php else : ?>
-                                                <span class="ide-badge ide-badge-inactive"><?php esc_html_e('Inactif', 'ide-snippets-bridge'); ?></span>
+                                                <span class="ide-badge ide-badge-inactive"><?php esc_html_e('Inactif', 'eliodata-snippet-hub'); ?></span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="ide-snippets-actions">
-                                            <a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge-edit&snippet_id=' . (int) $snippet->id)); ?>"><?php esc_html_e('Éditer', 'ide-snippets-bridge'); ?></a>
+                                            <a class="button button-small" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-edit&snippet_id=' . (int) $snippet->id)); ?>"><?php esc_html_e('Éditer', 'eliodata-snippet-hub'); ?></a>
                                             <form method="post">
                                                 <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                                                <input type="hidden" name="page" value="ide-snippets-bridge">
+                                                <input type="hidden" name="page" value="eliodata-snippet-hub">
                                                 <input type="hidden" name="op" value="toggle_snippet">
                                                 <input type="hidden" name="snippet_id" value="<?php echo (int) $snippet->id; ?>">
                                                 <input type="hidden" name="target_active" value="<?php echo (int) $snippet->active === 1 ? 0 : 1; ?>">
-                                                <button class="button button-small" type="submit"><?php echo esc_html((int) $snippet->active === 1 ? __('Désactiver', 'ide-snippets-bridge') : __('Activer', 'ide-snippets-bridge')); ?></button>
+                                                <button class="button button-small" type="submit"><?php echo esc_html((int) $snippet->active === 1 ? __('Désactiver', 'eliodata-snippet-hub') : __('Activer', 'eliodata-snippet-hub')); ?></button>
                                             </form>
-                                            <form method="post" onsubmit="return confirm('<?php echo esc_js(__('Supprimer ce snippet ?', 'ide-snippets-bridge')); ?>');">
+                                            <form method="post" onsubmit="return confirm('<?php echo esc_js(__('Supprimer ce snippet ?', 'eliodata-snippet-hub')); ?>');">
                                                 <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                                                <input type="hidden" name="page" value="ide-snippets-bridge">
+                                                <input type="hidden" name="page" value="eliodata-snippet-hub">
                                                 <input type="hidden" name="op" value="delete_snippet">
                                                 <input type="hidden" name="snippet_id" value="<?php echo (int) $snippet->id; ?>">
-                                                <button class="button button-small button-link-delete" type="submit"><?php esc_html_e('Supprimer', 'ide-snippets-bridge'); ?></button>
+                                                <button class="button button-small button-link-delete" type="submit"><?php esc_html_e('Supprimer', 'eliodata-snippet-hub'); ?></button>
                                             </form>
                                         </td>
                                     </tr>
@@ -2286,7 +2397,7 @@ class IDE_Snippets_Bridge {
 
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Import / Export', 'ide-snippets-bridge'); ?></h1>
+            <h1><?php esc_html_e('Import / Export', 'eliodata-snippet-hub'); ?></h1>
             <?php $this->render_stats_cards($stats); ?>
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
@@ -2299,33 +2410,33 @@ class IDE_Snippets_Bridge {
                     $import_sources = $this->get_import_source_plugins();
                     $show_source_auto = count($import_sources) > 1;
                     ?>
-                    <h2><?php esc_html_e('Importer', 'ide-snippets-bridge'); ?></h2>
-                    <p><?php esc_html_e('Importez un fichier JSON/NDJSON ou collez un payload brut.', 'ide-snippets-bridge'); ?></p>
-                    <p class="description"><?php esc_html_e('Limite maximale: 6 Mo. En cas de doublon sur le titre, appliquez la stratégie de conflit choisie.', 'ide-snippets-bridge'); ?></p>
+                    <h2><?php esc_html_e('Importer', 'eliodata-snippet-hub'); ?></h2>
+                    <p><?php esc_html_e('Importez un fichier JSON/NDJSON ou collez un payload brut.', 'eliodata-snippet-hub'); ?></p>
+                    <p class="description"><?php esc_html_e('Limite maximale: 6 Mo. En cas de doublon sur le titre, appliquez la stratégie de conflit choisie.', 'eliodata-snippet-hub'); ?></p>
                     <form method="post" enctype="multipart/form-data">
                         <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                        <input type="hidden" name="page" value="ide-snippets-bridge-import-export">
+                        <input type="hidden" name="page" value="eliodata-snippet-hub-import-export">
                         <input type="hidden" name="op" value="import_snippets">
                         <p>
-                            <label for="import_format"><strong><?php esc_html_e('Format', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="import_format"><strong><?php esc_html_e('Format', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="import_format" name="import_format">
                                 <option value="json">JSON</option>
                                 <option value="ndjson">NDJSON</option>
                             </select>
                         </p>
                         <p>
-                            <label for="import_mode"><strong><?php esc_html_e('Conflits', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="import_mode"><strong><?php esc_html_e('Conflits', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="import_mode" name="import_mode">
-                                <option value="overwrite"><?php esc_html_e('Écraser les snippets existants (même titre)', 'ide-snippets-bridge'); ?></option>
-                                <option value="overwrite_id"><?php esc_html_e('Écraser les snippets existants (détection par ID)', 'ide-snippets-bridge'); ?></option>
-                                <option value="skip"><?php esc_html_e('Ignorer les snippets existants (même titre)', 'ide-snippets-bridge'); ?></option>
+                                <option value="overwrite"><?php esc_html_e('Écraser les snippets existants (même titre)', 'eliodata-snippet-hub'); ?></option>
+                                <option value="overwrite_id"><?php esc_html_e('Écraser les snippets existants (détection par ID)', 'eliodata-snippet-hub'); ?></option>
+                                <option value="skip"><?php esc_html_e('Ignorer les snippets existants (même titre)', 'eliodata-snippet-hub'); ?></option>
                             </select>
                         </p>
                         <p>
-                            <label for="import_source_plugin"><strong><?php esc_html_e('Plugin source', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="import_source_plugin"><strong><?php esc_html_e('Plugin source', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="import_source_plugin" name="import_source_plugin">
                                 <?php if ($show_source_auto) : ?>
-                                    <option value="auto"><?php esc_html_e('Auto-détection', 'ide-snippets-bridge'); ?></option>
+                                    <option value="auto"><?php esc_html_e('Auto-détection', 'eliodata-snippet-hub'); ?></option>
                                 <?php endif; ?>
                                 <?php foreach ($import_sources as $source_key => $source_label) : ?>
                                     <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
@@ -2333,50 +2444,50 @@ class IDE_Snippets_Bridge {
                             </select>
                         </p>
                         <p>
-                            <label for="import_activation_mode"><strong><?php esc_html_e('Activation à l’import', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="import_activation_mode"><strong><?php esc_html_e('Activation à l’import', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="import_activation_mode" name="import_activation_mode">
-                                <option value="keep"><?php esc_html_e('Conserver l’état importé', 'ide-snippets-bridge'); ?></option>
-                                <option value="activate_all"><?php esc_html_e('Activer tous les snippets importés', 'ide-snippets-bridge'); ?></option>
-                                <option value="deactivate_all"><?php esc_html_e('Désactiver tous les snippets importés', 'ide-snippets-bridge'); ?></option>
+                                <option value="keep"><?php esc_html_e('Conserver l’état importé', 'eliodata-snippet-hub'); ?></option>
+                                <option value="activate_all"><?php esc_html_e('Activer tous les snippets importés', 'eliodata-snippet-hub'); ?></option>
+                                <option value="deactivate_all"><?php esc_html_e('Désactiver tous les snippets importés', 'eliodata-snippet-hub'); ?></option>
                             </select>
                         </p>
                         <p>
-                            <label for="import_file"><strong><?php esc_html_e('Fichier', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="import_file"><strong><?php esc_html_e('Fichier', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <input type="file" id="import_file" name="import_file" accept=".json,.ndjson,.txt">
                         </p>
                         <p>
-                            <label for="import_payload"><strong><?php esc_html_e('Ou coller les données', 'ide-snippets-bridge'); ?></strong></label>
-                            <textarea class="large-text code" id="import_payload" name="import_payload" rows="10" placeholder="<?php echo esc_attr__('Si un fichier est fourni, son contenu est prioritaire.', 'ide-snippets-bridge'); ?>"></textarea>
+                            <label for="import_payload"><strong><?php esc_html_e('Ou coller les données', 'eliodata-snippet-hub'); ?></strong></label>
+                            <textarea class="large-text code" id="import_payload" name="import_payload" rows="10" placeholder="<?php echo esc_attr__('Si un fichier est fourni, son contenu est prioritaire.', 'eliodata-snippet-hub'); ?>"></textarea>
                         </p>
-                        <p><button type="submit" class="button button-primary"><?php esc_html_e('Importer', 'ide-snippets-bridge'); ?></button></p>
+                        <p><button type="submit" class="button button-primary"><?php esc_html_e('Importer', 'eliodata-snippet-hub'); ?></button></p>
                     </form>
                 </div>
                 <div class="ide-snippets-panel">
-                    <h2><?php esc_html_e('Exporter', 'ide-snippets-bridge'); ?></h2>
-                    <p><?php esc_html_e('Téléchargez tous les snippets ou uniquement un sous-ensemble.', 'ide-snippets-bridge'); ?></p>
+                    <h2><?php esc_html_e('Exporter', 'eliodata-snippet-hub'); ?></h2>
+                    <p><?php esc_html_e('Téléchargez tous les snippets ou uniquement un sous-ensemble.', 'eliodata-snippet-hub'); ?></p>
                     <form method="post">
                         <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                        <input type="hidden" name="page" value="ide-snippets-bridge-import-export">
+                        <input type="hidden" name="page" value="eliodata-snippet-hub-import-export">
                         <input type="hidden" name="op" value="export_snippets">
                         <p>
-                            <label for="export_format"><strong><?php esc_html_e('Format', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="export_format"><strong><?php esc_html_e('Format', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="export_format" name="export_format">
                                 <option value="json">JSON</option>
                                 <option value="ndjson">NDJSON</option>
                             </select>
                         </p>
                         <p>
-                            <label for="export_status"><strong><?php esc_html_e('Filtre', 'ide-snippets-bridge'); ?></strong></label><br>
+                            <label for="export_status"><strong><?php esc_html_e('Filtre', 'eliodata-snippet-hub'); ?></strong></label><br>
                             <select id="export_status" name="export_status">
-                                <option value="all"><?php esc_html_e('Tous', 'ide-snippets-bridge'); ?></option>
-                                <option value="active"><?php esc_html_e('Actifs', 'ide-snippets-bridge'); ?></option>
-                                <option value="inactive"><?php esc_html_e('Inactifs', 'ide-snippets-bridge'); ?></option>
+                                <option value="all"><?php esc_html_e('Tous', 'eliodata-snippet-hub'); ?></option>
+                                <option value="active"><?php esc_html_e('Actifs', 'eliodata-snippet-hub'); ?></option>
+                                <option value="inactive"><?php esc_html_e('Inactifs', 'eliodata-snippet-hub'); ?></option>
                             </select>
                         </p>
-                        <p><button type="submit" class="button button-primary"><?php esc_html_e('Télécharger l’export', 'ide-snippets-bridge'); ?></button></p>
+                        <p><button type="submit" class="button button-primary"><?php esc_html_e('Télécharger l’export', 'eliodata-snippet-hub'); ?></button></p>
                     </form>
                     <hr>
-                    <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge')); ?>"><?php esc_html_e('Retour à la liste', 'ide-snippets-bridge'); ?></a></p>
+                    <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub')); ?>"><?php esc_html_e('Retour à la liste', 'eliodata-snippet-hub'); ?></a></p>
                 </div>
             </div>
         </div>
@@ -2405,7 +2516,7 @@ class IDE_Snippets_Bridge {
         $stats = $this->get_snippets_stats($snippets);
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Attributions des snippets', 'ide-snippets-bridge'); ?></h1>
+            <h1><?php esc_html_e('Attributions des snippets', 'eliodata-snippet-hub'); ?></h1>
             <?php $this->render_stats_cards($stats); ?>
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
@@ -2413,24 +2524,24 @@ class IDE_Snippets_Bridge {
                 </div>
             <?php endif; ?>
             <div class="ide-snippets-panel">
-                <p class="ide-premium-ready"><span class="ide-badge ide-badge-premium-ready">Premium-ready</span><span><?php esc_html_e('Attribution par contenu', 'ide-snippets-bridge'); ?></span></p>
+                <p class="ide-premium-ready"><span class="ide-badge ide-badge-premium-ready">Premium-ready</span><span><?php esc_html_e('Attribution par contenu', 'eliodata-snippet-hub'); ?></span></p>
                 <form method="post">
                     <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
-                    <input type="hidden" name="page" value="ide-snippets-bridge-assignments">
+                    <input type="hidden" name="page" value="eliodata-snippet-hub-assignments">
                     <input type="hidden" name="op" value="save_assignments_bulk">
                     <table class="widefat striped ide-assignments-table">
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th><?php esc_html_e('Snippet', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Mode', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('Types de contenu', 'ide-snippets-bridge'); ?></th>
-                                <th><?php esc_html_e('IDs de contenu', 'ide-snippets-bridge'); ?></th>
+                                <th><?php esc_html_e('Snippet', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Mode', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('Types de contenu', 'eliodata-snippet-hub'); ?></th>
+                                <th><?php esc_html_e('IDs de contenu', 'eliodata-snippet-hub'); ?></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($snippets)) : ?>
-                                <tr><td colspan="5"><?php esc_html_e('Aucun snippet trouvé.', 'ide-snippets-bridge'); ?></td></tr>
+                                <tr><td colspan="5"><?php esc_html_e('Aucun snippet trouvé.', 'eliodata-snippet-hub'); ?></td></tr>
                             <?php else : ?>
                                 <?php foreach ($snippets as $snippet) : ?>
                                     <?php $snippet_id = (int) $snippet->id; ?>
@@ -2444,18 +2555,18 @@ class IDE_Snippets_Bridge {
                                         ?>
                                         <td>
                                             <select name="target_mode[<?php echo esc_attr((string) $snippet_id); ?>]" data-target-mode>
-                                                <option value="all" <?php selected($snippet_mode, 'all'); ?>><?php esc_html_e('Général', 'ide-snippets-bridge'); ?></option>
-                                                <option value="post_types" <?php selected($snippet_mode, 'post_types'); ?>><?php esc_html_e('Type de contenu', 'ide-snippets-bridge'); ?></option>
-                                                <option value="specific_posts" <?php selected($snippet_mode, 'specific_posts'); ?>><?php esc_html_e('ID cibles', 'ide-snippets-bridge'); ?></option>
+                                                <option value="all" <?php selected($snippet_mode, 'all'); ?>><?php esc_html_e('Général', 'eliodata-snippet-hub'); ?></option>
+                                                <option value="post_types" <?php selected($snippet_mode, 'post_types'); ?>><?php esc_html_e('Type de contenu', 'eliodata-snippet-hub'); ?></option>
+                                                <option value="specific_posts" <?php selected($snippet_mode, 'specific_posts'); ?>><?php esc_html_e('ID cibles', 'eliodata-snippet-hub'); ?></option>
                                             </select>
                                         </td>
                                         <td data-target-types>
-                                            <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun type sélectionné', 'ide-snippets-bridge'); ?>" data-values-mode="text">
+                                            <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun type sélectionné', 'eliodata-snippet-hub'); ?>" data-values-mode="text">
                                                 <div class="ide-types-control">
-                                                    <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les types', 'ide-snippets-bridge'); ?></button>
+                                                    <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les types', 'eliodata-snippet-hub'); ?></button>
                                                     <div class="ide-types-dropdown ide-target-hidden" data-types-dropdown>
                                                         <div class="ide-types-search">
-                                                            <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un type...', 'ide-snippets-bridge'); ?>" data-types-search>
+                                                            <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un type...', 'eliodata-snippet-hub'); ?>" data-types-search>
                                                         </div>
                                                         <?php foreach ($targetable_post_types as $post_type_key => $post_type_object) : ?>
                                                             <?php $type_label = $this->get_post_type_target_label($post_type_key, $post_type_object); ?>
@@ -2471,12 +2582,12 @@ class IDE_Snippets_Bridge {
                                             </div>
                                         </td>
                                         <td data-target-ids>
-                                            <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun contenu sélectionné', 'ide-snippets-bridge'); ?>" data-values-mode="numeric">
+                                            <div class="ide-target-types-picker" data-types-picker data-empty-text="<?php echo esc_attr__('Aucun contenu sélectionné', 'eliodata-snippet-hub'); ?>" data-values-mode="numeric">
                                                 <div class="ide-types-control">
-                                                    <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les IDs', 'ide-snippets-bridge'); ?></button>
+                                                    <button type="button" class="button ide-types-toggle" data-types-toggle><?php esc_html_e('Choisir les IDs', 'eliodata-snippet-hub'); ?></button>
                                                     <div class="ide-types-dropdown ide-target-hidden" data-types-dropdown>
                                                         <div class="ide-types-search">
-                                                            <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un ID, titre, type...', 'ide-snippets-bridge'); ?>" data-types-search>
+                                                            <input type="search" class="regular-text" placeholder="<?php echo esc_attr__('Rechercher un ID, titre, type...', 'eliodata-snippet-hub'); ?>" data-types-search>
                                                         </div>
                                                         <?php foreach ($targetable_posts as $post_item) : ?>
                                                             <label class="ide-types-option">
@@ -2487,7 +2598,7 @@ class IDE_Snippets_Bridge {
                                                     </div>
                                                 </div>
                                                 <div class="ide-types-summary" data-types-summary></div>
-                                                <input class="regular-text ide-target-ids-input" type="text" name="target_post_ids[<?php echo esc_attr((string) $snippet_id); ?>]" value="<?php echo isset($snippet->target_post_ids) ? esc_attr($snippet->target_post_ids) : ''; ?>" placeholder="<?php echo esc_attr__('12,34,56', 'ide-snippets-bridge'); ?>" data-types-hidden>
+                                                <input class="regular-text ide-target-ids-input" type="text" name="target_post_ids[<?php echo esc_attr((string) $snippet_id); ?>]" value="<?php echo isset($snippet->target_post_ids) ? esc_attr($snippet->target_post_ids) : ''; ?>" placeholder="<?php echo esc_attr__('12,34,56', 'eliodata-snippet-hub'); ?>" data-types-hidden>
                                             </div>
                                         </td>
                                     </tr>
@@ -2496,8 +2607,8 @@ class IDE_Snippets_Bridge {
                         </tbody>
                     </table>
                     <p style="margin-top:12px;">
-                        <button type="submit" class="button button-primary"><?php esc_html_e('Enregistrer les attributions', 'ide-snippets-bridge'); ?></button>
-                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=ide-snippets-bridge')); ?>"><?php esc_html_e('Retour à la liste', 'ide-snippets-bridge'); ?></a>
+                        <button type="submit" class="button button-primary"><?php esc_html_e('Enregistrer les attributions', 'eliodata-snippet-hub'); ?></button>
+                        <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub')); ?>"><?php esc_html_e('Retour à la liste', 'eliodata-snippet-hub'); ?></a>
                     </p>
                 </form>
             </div>
@@ -2516,9 +2627,9 @@ class IDE_Snippets_Bridge {
         }
 
         $page_slug = filter_input(INPUT_GET, 'page', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-        $page_slug = is_string($page_slug) && $page_slug !== '' ? sanitize_text_field(wp_unslash($page_slug)) : 'ide-snippets-bridge-edit';
-        if (!in_array($page_slug, ['ide-snippets-bridge-new', 'ide-snippets-bridge-edit'], true)) {
-            $page_slug = 'ide-snippets-bridge-edit';
+        $page_slug = is_string($page_slug) && $page_slug !== '' ? sanitize_text_field(wp_unslash($page_slug)) : 'eliodata-snippet-hub-edit';
+        if (!in_array($page_slug, ['eliodata-snippet-hub-new', 'eliodata-snippet-hub-edit'], true)) {
+            $page_slug = 'eliodata-snippet-hub-edit';
         }
 
         $snippet_id_input = filter_input(INPUT_GET, 'snippet_id', FILTER_SANITIZE_NUMBER_INT);
@@ -2526,7 +2637,7 @@ class IDE_Snippets_Bridge {
         $editing = $snippet_id > 0 ? $this->get_native_snippet($snippet_id) : null;
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Eliodata Snippet Hub (Native)', 'ide-snippets-bridge'); ?></h1>
+            <h1><?php esc_html_e('Eliodata Snippet Hub (Native)', 'eliodata-snippet-hub'); ?></h1>
 
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
@@ -2545,9 +2656,9 @@ class IDE_Snippets_Bridge {
  *
  * @return IDE_Snippets_Bridge
  */
-function ide_snippets_bridge_init() {
+function eliodata_snippet_hub_init() {
     return IDE_Snippets_Bridge::get_instance();
 }
 
 // Go!
-ide_snippets_bridge_init();
+eliodata_snippet_hub_init();
