@@ -37,15 +37,20 @@ class SnippetController {
         if (!name) {
             return;
         }
-        const description = await vscode.window.showInputBox({ prompt: 'Description du snippet' });
+        const description = await vscode.window.showInputBox({ prompt: 'Description du snippet', placeHolder: 'À quoi sert ce snippet ?' });
         if (description === undefined) {
             return;
         }
-        const content = await vscode.window.showInputBox({ prompt: 'Contenu du snippet (code PHP)' });
+        const content = await vscode.window.showInputBox({ prompt: 'Code PHP du snippet', placeHolder: '<?php' });
         if (!content) {
             return;
         }
-        await this.snippetProvider.createSnippet({ name, code: content, description });
+        const createdSnippet = await this.snippetProvider.createSnippet({ name, code: content, description });
+        if (createdSnippet) {
+            vscode.window.showInformationMessage(`Snippet créé : ${createdSnippet.name}`);
+            return;
+        }
+        vscode.window.showErrorMessage('Le snippet n’a pas pu être créé.');
     }
     async deleteSnippet(snippet) {
         if (!snippet) {
@@ -79,7 +84,7 @@ class SnippetController {
             vscode.commands.executeCommand('wordpressSnippets.refresh');
         }
         else {
-            vscode.window.showInformationMessage('Changement de plugin annulé.');
+            vscode.window.showInformationMessage('Changement de moteur annulé.');
         }
     }
     async openSnippet(snippet) {
@@ -126,7 +131,7 @@ class SnippetController {
         const newName = await vscode.window.showInputBox({
             prompt: 'Nouveau nom du snippet',
             value: snippet.name,
-            placeHolder: 'Entrez le nouveau nom...',
+            placeHolder: 'Saisissez le nouveau nom…',
             validateInput: (v) => v.trim() ? null : 'Le nom ne peut pas être vide'
         });
         if (newName && newName !== snippet.name) {
@@ -134,11 +139,11 @@ class SnippetController {
                 const provider = this.snippetProvider;
                 const success = await provider.renameSnippet(snippet.id, newName);
                 if (success) {
-                    vscode.window.showInformationMessage(`Snippet renommé: "${newName}"`);
+                    vscode.window.showInformationMessage(`Snippet renommé : "${newName}"`);
                 }
             }
             else {
-                vscode.window.showWarningMessage('Le renommage n\'est pas supporté pour ce type de plugin.');
+                vscode.window.showWarningMessage('Le renommage n’est pas pris en charge par ce moteur de snippets.');
             }
         }
     }
@@ -154,7 +159,7 @@ class SnippetController {
         const newDescription = await vscode.window.showInputBox({
             prompt: 'Description du snippet',
             value: currentDesc,
-            placeHolder: 'Entrez la description...'
+            placeHolder: 'Décrivez l’utilité du snippet'
         });
         if (newDescription !== undefined && newDescription !== currentDesc) {
             if ('updateDescription' in this.snippetProvider) {
@@ -165,7 +170,7 @@ class SnippetController {
                 }
             }
             else {
-                vscode.window.showWarningMessage('La modification de description n\'est pas supportée pour ce type de plugin.');
+                vscode.window.showWarningMessage('La modification de la description n’est pas prise en charge par ce moteur de snippets.');
             }
         }
     }
@@ -179,9 +184,9 @@ class SnippetController {
         const freshSnippet = await this.snippetProvider.getSnippet(snippet.id);
         const currentTags = freshSnippet?.tags || snippet.tags || '';
         const newTags = await vscode.window.showInputBox({
-            prompt: 'Tags/mots-clés du snippet (séparés par des virgules)',
+            prompt: 'Mots-clés du snippet (séparés par des virgules)',
             value: currentTags,
-            placeHolder: 'woocommerce, checkout, panier...'
+            placeHolder: 'woocommerce, checkout, panier'
         });
         if (newTags !== undefined && newTags !== currentTags) {
             if ('updateTags' in this.snippetProvider) {
@@ -192,7 +197,7 @@ class SnippetController {
                 }
             }
             else {
-                vscode.window.showWarningMessage('La modification des tags n\'est pas supportée pour ce type de plugin.');
+                vscode.window.showWarningMessage('La modification des mots-clés n’est pas prise en charge par ce moteur de snippets.');
             }
         }
     }
@@ -203,11 +208,10 @@ class SnippetController {
             return;
         }
         if (!this.snippetProvider.updateAttribution) {
-            vscode.window.showWarningMessage('La modification des attributions n\'est pas supportée pour ce type de plugin.');
+            vscode.window.showWarningMessage('La modification des attributions n’est pas prise en charge par ce moteur de snippets.');
             return;
         }
         const freshSnippet = await this.snippetProvider.getSnippet(snippet.id);
-        const currentMode = (freshSnippet?.target_mode || snippet.target_mode || 'all');
         const currentPostTypes = freshSnippet?.target_post_types || snippet.target_post_types || '';
         const currentPostIds = freshSnippet?.target_post_ids || snippet.target_post_ids || '';
         const selectedMode = await vscode.window.showQuickPick([
@@ -215,7 +219,7 @@ class SnippetController {
             { label: 'Types de contenus', value: 'post_types' },
             { label: 'Contenus spécifiques', value: 'specific_posts' }
         ], {
-            placeHolder: 'Sélectionner le mode d\'attribution',
+            placeHolder: 'Choisir le mode d’attribution',
         });
         if (!selectedMode) {
             return;
@@ -263,7 +267,7 @@ class SnippetController {
             snippetId = item.snippet.id;
         }
         else {
-            const idStr = await vscode.window.showInputBox({ prompt: 'Entrez l\'ID du snippet à restaurer' });
+            const idStr = await vscode.window.showInputBox({ prompt: 'ID du snippet à restaurer' });
             if (!idStr) {
                 return;
             }
@@ -309,7 +313,7 @@ class SnippetController {
             }
         }
         if (!snippetId) {
-            const idStr = await vscode.window.showInputBox({ prompt: 'Entrez l\'ID du snippet à analyser' });
+            const idStr = await vscode.window.showInputBox({ prompt: 'ID du snippet à analyser' });
             if (idStr) {
                 const numericId = parseInt(idStr, 10);
                 snippetId = isNaN(numericId) ? idStr : numericId;
@@ -322,7 +326,7 @@ class SnippetController {
             const snippet = await this.snippetProvider.getSnippet(snippetId);
             if (snippet) {
                 const analysis = `ID: ${snippet.id}\nNom: ${snippet.name}\nDescription: ${snippet.description}\nActif: ${snippet.active}\nTags: ${snippet.tags || 'aucun'}\nCible: ${snippet.target_mode || 'all'}\nTypes de contenus: ${snippet.target_post_types || '-'}\nIDs contenus: ${snippet.target_post_ids || '-'}\n\nCode:\n---\n${snippet.code}`;
-                vscode.window.showInformationMessage(`Analyse: ${snippet.name}`, { modal: true, detail: analysis });
+                vscode.window.showInformationMessage(`Analyse : ${snippet.name}`, { modal: true, detail: analysis });
             }
             else {
                 vscode.window.showErrorMessage(`Snippet ID ${snippetId} introuvable.`);

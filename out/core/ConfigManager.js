@@ -30,18 +30,137 @@ class ConfigManager {
     constructor(context) {
         this.context = context;
     }
+    isSupportedPlugin(plugin) {
+        return plugin === 'IDE Native' || plugin === 'IDE Snippets' || plugin === 'Code Snippets';
+    }
     normalizePlugin(plugin) {
         if (plugin === 'IDE Native') {
             return 'IDE Snippets';
         }
-        if (plugin === 'IDE Snippets' || plugin === 'Code Snippets' || plugin === 'FluentSnippets') {
+        if (plugin === 'IDE Snippets' || plugin === 'Code Snippets') {
             return plugin;
         }
         return 'IDE Snippets';
     }
+    buildDefaultVaultSiteFolder(siteUrl) {
+        try {
+            const hostname = new URL(siteUrl).hostname.replace(/^www\./i, '');
+            const slug = hostname
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            return `site-${slug || 'wordpress'}`;
+        }
+        catch {
+            const fallback = siteUrl
+                .toLowerCase()
+                .replace(/^https?:\/\//, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            return `site-${fallback || 'wordpress'}`;
+        }
+    }
+    normalizeVaultSiteFolder(folder, siteUrl) {
+        const baseValue = (folder || '').trim() || this.buildDefaultVaultSiteFolder(siteUrl);
+        const sanitized = baseValue
+            .toLowerCase()
+            .replace(/[^a-z0-9-]+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        if (sanitized === '') {
+            return this.buildDefaultVaultSiteFolder(siteUrl);
+        }
+        return sanitized.startsWith('site-') ? sanitized : `site-${sanitized}`;
+    }
+    normalizeConnection(config) {
+        return {
+            ...config,
+            vaultSiteFolder: this.normalizeVaultSiteFolder(config.vaultSiteFolder, config.siteUrl),
+            plugin: this.normalizePlugin(config.plugin),
+            mcpEnabled: Boolean(config.mcpEnabled),
+            mcpReadonly: Boolean(config.mcpReadonly),
+            mcpTools: Array.isArray(config.mcpTools) ? config.mcpTools : [],
+            mcpLastSyncAt: config.mcpLastSyncAt
+        };
+    }
+    getSupportedPluginsFromStatus(status) {
+        const rawPlugins = Array.isArray(status?.active_plugins) ? status.active_plugins : [];
+        const supportedPlugins = rawPlugins
+            .map((plugin) => String(plugin))
+            .filter((plugin) => this.isSupportedPlugin(plugin))
+            .map((plugin) => this.normalizePlugin(plugin));
+        return supportedPlugins.filter((plugin, index) => supportedPlugins.indexOf(plugin) === index);
+    }
+    async discoverMcpTools(apiConnector) {
+        try {
+            const response = await apiConnector.getMcpTools();
+            return {
+                mcpEnabled: true,
+                mcpReadonly: Boolean(response.readonly),
+                mcpTools: Array.isArray(response.tools) ? response.tools : [],
+                mcpLastSyncAt: new Date().toISOString()
+            };
+        }
+        catch (error) {
+            const status = error?.response?.status;
+            if (status === 404) {
+                return {
+                    mcpEnabled: false,
+                    mcpReadonly: false,
+                    mcpTools: [],
+                    mcpLastSyncAt: undefined
+                };
+            }
+            throw error;
+        }
+    }
+    async hydrateConnectionWithCapabilities(baseConfig, apiConnector) {
+        const mcpConfig = await this.discoverMcpTools(apiConnector);
+        return this.normalizeConnection({
+            ...baseConfig,
+            ...mcpConfig
+        });
+    }
+    async updateStoredConnection(updatedConnection) {
+        const normalizedConnection = this.normalizeConnection(updatedConnection);
+        const multiConfig = await this.getMultiSiteConfig();
+        const existingIndex = multiConfig.connections.findIndex(connection => connection.id === normalizedConnection.id);
+        if (existingIndex >= 0) {
+            multiConfig.connections[existingIndex] = normalizedConnection;
+        }
+        if (multiConfig.activeConnectionId === normalizedConnection.id) {
+            await this.saveConfig(normalizedConnection);
+        }
+        await this.saveMultiSiteConfig(multiConfig);
+    }
+    getWorkspaceConfiguration() {
+        return vscode.workspace.getConfiguration('wordpressSnippets');
+    }
+    getWorkspaceConfigurationTarget() {
+        return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+    }
+    async setWorkspaceConnectionPreference(connection) {
+        const config = this.getWorkspaceConfiguration();
+        const target = this.getWorkspaceConfigurationTarget();
+        await config.update(ConfigManager.WORKSPACE_CONNECTION_ID_SETTING, connection.id, target);
+        await config.update(ConfigManager.WORKSPACE_SITE_FOLDER_SETTING, this.normalizeVaultSiteFolder(connection.vaultSiteFolder, connection.siteUrl), target);
+    }
+    getWorkspaceConnectionId() {
+        return this.getWorkspaceConfiguration().get(ConfigManager.WORKSPACE_CONNECTION_ID_SETTING) || undefined;
+    }
+    getWorkspaceSiteFolder() {
+        const value = this.getWorkspaceConfiguration().get(ConfigManager.WORKSPACE_SITE_FOLDER_SETTING) || undefined;
+        return value ? this.normalizeVaultSiteFolder(value, 'https://workspace.local') : undefined;
+    }
+    getWorkspaceSyncRole() {
+        const value = this.getWorkspaceConfiguration().get(ConfigManager.WORKSPACE_SYNC_ROLE_SETTING) || 'owner';
+        return value === 'editor' || value === 'off' ? value : 'owner';
+    }
     async saveConfig(config) {
         try {
-            await this.context.secrets.store(ConfigManager.CONFIG_KEY, JSON.stringify(config));
+            await this.context.secrets.store(ConfigManager.CONFIG_KEY, JSON.stringify(this.normalizeConnection(config)));
             console.log('Configuration sauvegardée avec succès (single-site).');
         }
         catch (error) {
@@ -56,7 +175,7 @@ class ConfigManager {
                 console.log('Aucune configuration trouvée (single-site).');
                 return null;
             }
-            return JSON.parse(configStr);
+            return this.normalizeConnection(JSON.parse(configStr));
         }
         catch (error) {
             console.error('Erreur lors de la lecture de la configuration:', error);
@@ -73,7 +192,13 @@ class ConfigManager {
             if (!configStr) {
                 return { connections: [] };
             }
-            return JSON.parse(configStr);
+            const parsedConfig = JSON.parse(configStr);
+            return {
+                connections: Array.isArray(parsedConfig.connections)
+                    ? parsedConfig.connections.map(connection => this.normalizeConnection(connection))
+                    : [],
+                activeConnectionId: parsedConfig.activeConnectionId
+            };
         }
         catch (error) {
             console.error('Erreur lors de la lecture de la configuration multi-sites:', error);
@@ -82,7 +207,13 @@ class ConfigManager {
     }
     async saveMultiSiteConfig(config) {
         try {
-            await this.context.secrets.store(ConfigManager.MULTI_SITE_CONFIG_KEY, JSON.stringify(config));
+            const normalizedConfig = {
+                connections: Array.isArray(config.connections)
+                    ? config.connections.map(connection => this.normalizeConnection(connection))
+                    : [],
+                activeConnectionId: config.activeConnectionId
+            };
+            await this.context.secrets.store(ConfigManager.MULTI_SITE_CONFIG_KEY, JSON.stringify(normalizedConfig));
             console.log('Configuration multi-sites sauvegardée avec succès.');
         }
         catch (error) {
@@ -91,21 +222,19 @@ class ConfigManager {
     }
     async addConnection(connection) {
         const multiConfig = await this.getMultiSiteConfig();
-        // Générer un ID unique si pas fourni
-        if (!connection.id) {
-            connection.id = `wp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const normalizedConnection = this.normalizeConnection(connection);
+        if (!normalizedConnection.id) {
+            normalizedConnection.id = `wp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         }
-        // Vérifier si une connexion avec cette URL existe déjà
-        const existingIndex = multiConfig.connections.findIndex(c => c.siteUrl === connection.siteUrl);
+        const existingIndex = multiConfig.connections.findIndex(c => c.siteUrl === normalizedConnection.siteUrl);
         if (existingIndex >= 0) {
-            multiConfig.connections[existingIndex] = connection;
+            multiConfig.connections[existingIndex] = normalizedConnection;
         }
         else {
-            multiConfig.connections.push(connection);
+            multiConfig.connections.push(normalizedConnection);
         }
-        // Si c'est la première connexion, la marquer comme active
         if (multiConfig.connections.length === 1) {
-            multiConfig.activeConnectionId = connection.id;
+            multiConfig.activeConnectionId = normalizedConnection.id;
         }
         await this.saveMultiSiteConfig(multiConfig);
     }
@@ -117,6 +246,12 @@ class ConfigManager {
             multiConfig.activeConnectionId = multiConfig.connections.length > 0 ? multiConfig.connections[0].id : undefined;
         }
         await this.saveMultiSiteConfig(multiConfig);
+        if (this.getWorkspaceConnectionId() === connectionId) {
+            const config = this.getWorkspaceConfiguration();
+            const target = this.getWorkspaceConfigurationTarget();
+            await config.update(ConfigManager.WORKSPACE_CONNECTION_ID_SETTING, undefined, target);
+            await config.update(ConfigManager.WORKSPACE_SITE_FOLDER_SETTING, undefined, target);
+        }
     }
     async setActiveConnection(connectionId) {
         const multiConfig = await this.getMultiSiteConfig();
@@ -124,14 +259,28 @@ class ConfigManager {
         if (connection) {
             multiConfig.activeConnectionId = connectionId;
             await this.saveMultiSiteConfig(multiConfig);
-            // Maintenir la compatibilité avec l'ancien système
             await this.saveConfig(connection);
-            return connection;
+            await this.setWorkspaceConnectionPreference(connection);
+            return this.normalizeConnection(connection);
         }
         return null;
     }
     async getActiveConnection() {
         const multiConfig = await this.getMultiSiteConfig();
+        const workspaceConnectionId = this.getWorkspaceConnectionId();
+        if (workspaceConnectionId) {
+            const workspaceConnection = multiConfig.connections.find(c => c.id === workspaceConnectionId);
+            if (workspaceConnection) {
+                return workspaceConnection;
+            }
+        }
+        const workspaceSiteFolder = this.getWorkspaceSiteFolder();
+        if (workspaceSiteFolder) {
+            const workspaceConnection = multiConfig.connections.find(c => this.normalizeVaultSiteFolder(c.vaultSiteFolder, c.siteUrl) === workspaceSiteFolder);
+            if (workspaceConnection) {
+                return workspaceConnection;
+            }
+        }
         if (multiConfig.activeConnectionId) {
             const connection = multiConfig.connections.find(c => c.id === multiConfig.activeConnectionId);
             if (connection) {
@@ -146,10 +295,10 @@ class ConfigManager {
         return multiConfig.connections;
     }
     async switchPlugin() {
-        const currentConfig = await this.getConfig();
+        const currentConfig = await this.getActiveConnection();
         if (!currentConfig) {
-            const choice = await vscode.window.showInformationMessage('Aucune connexion active. Voulez-vous en configurer une ?', 'Oui', 'Non');
-            if (choice === 'Oui') {
+            const choice = await vscode.window.showInformationMessage('Aucun site actif. Voulez-vous configurer une connexion ?', 'Configurer', 'Annuler');
+            if (choice === 'Configurer') {
                 return this.promptForConfig();
             }
             return null;
@@ -158,14 +307,16 @@ class ConfigManager {
         try {
             const status = await apiConnector.getStatus();
             if (!status.active_plugins || status.active_plugins.length === 0) {
-                vscode.window.showErrorMessage('Aucun plugin de snippet compatible n\'est actif sur votre site.');
+                vscode.window.showErrorMessage('Aucun moteur de snippets compatible n’est actif sur ce site.');
                 return currentConfig;
             }
-            const rawPlugins = Array.isArray(status.active_plugins) ? status.active_plugins : [];
-            const normalizedPlugins = rawPlugins.map((plugin) => this.normalizePlugin(String(plugin)));
-            const availablePlugins = normalizedPlugins.filter((plugin, index) => normalizedPlugins.indexOf(plugin) === index);
+            const availablePlugins = this.getSupportedPluginsFromStatus(status);
+            if (availablePlugins.length === 0) {
+                vscode.window.showErrorMessage('Le companion public supporte uniquement IDE Snippets et Code Snippets.');
+                return currentConfig;
+            }
             const newPlugin = await vscode.window.showQuickPick(availablePlugins, {
-                placeHolder: `Plugin actuel: ${this.normalizePlugin(currentConfig.plugin)}. Choisissez un nouveau plugin.`,
+                placeHolder: `Moteur actuel : ${this.normalizePlugin(currentConfig.plugin)}. Choisissez le moteur à utiliser.`,
             });
             if (!newPlugin || newPlugin === currentConfig.plugin) {
                 return currentConfig;
@@ -173,14 +324,14 @@ class ConfigManager {
             const newConfig = {
                 ...currentConfig,
                 plugin: this.normalizePlugin(newPlugin),
-                fluentSnippetsPath: newPlugin === 'FluentSnippets' ? status.fluent_snippets_path : undefined
             };
             await this.saveConfig(newConfig);
-            vscode.window.showInformationMessage(`Passage à ${newPlugin} réussi.`);
+            await this.updateStoredConnection(newConfig);
+            vscode.window.showInformationMessage(`Moteur actif mis à jour : ${newPlugin}.`);
             return newConfig;
         }
         catch (error) {
-            vscode.window.showErrorMessage(`Échec du changement de plugin: ${error.message}`);
+            vscode.window.showErrorMessage(`Impossible de changer de moteur de snippets : ${error.message}`);
             return currentConfig;
         }
     }
@@ -188,15 +339,16 @@ class ConfigManager {
         const connections = await this.getAllConnections();
         const activeConnection = await this.getActiveConnection();
         const options = [
-            '➕ Ajouter une nouvelle connexion',
+            '➕ Ajouter un site WordPress',
             ...connections.map(conn => {
                 const isActive = activeConnection?.id === conn.id;
-                return `${isActive ? '🟢' : '⚪'} ${conn.name || conn.siteUrl} (${conn.plugin})`;
+                const mcpLabel = conn.mcpEnabled ? ` · MCP ${conn.mcpTools?.length || 0}` : '';
+                return `${isActive ? '🟢' : '⚪'} ${conn.name || conn.siteUrl} (${conn.plugin}${mcpLabel})`;
             }),
-            ...(connections.length > 0 ? ['🗑️ Supprimer une connexion'] : [])
+            ...(connections.length > 0 ? ['🗑️ Supprimer un site'] : [])
         ];
         const selected = await vscode.window.showQuickPick(options, {
-            placeHolder: 'Gérer les connexions WordPress'
+            placeHolder: 'Gérer les sites WordPress configurés'
         });
         if (!selected)
             return null;
@@ -212,7 +364,7 @@ class ConfigManager {
             const selectedConnection = connections[connectionIndex];
             if (selectedConnection) {
                 await this.setActiveConnection(selectedConnection.id);
-                vscode.window.showInformationMessage(`Connexion active: ${selectedConnection.name || selectedConnection.siteUrl}`);
+                vscode.window.showInformationMessage(`Site actif : ${selectedConnection.name || selectedConnection.siteUrl}`);
                 return selectedConnection;
             }
         }
@@ -221,22 +373,23 @@ class ConfigManager {
     async promptForConnectionDeletion() {
         const connections = await this.getAllConnections();
         if (connections.length === 0) {
-            vscode.window.showInformationMessage('Aucune connexion à supprimer.');
+            vscode.window.showInformationMessage('Aucun site configuré à supprimer.');
             return null;
         }
         const connectionOptions = connections.map(conn => ({
             label: conn.name || conn.siteUrl,
             description: `${conn.siteUrl} (${conn.plugin})`,
+            detail: conn.mcpEnabled ? `MCP actif · ${conn.mcpTools?.length || 0} outil(s)` : 'MCP non détecté',
             connection: conn
         }));
         const selected = await vscode.window.showQuickPick(connectionOptions, {
-            placeHolder: 'Sélectionner la connexion à supprimer'
+            placeHolder: 'Sélectionner le site à supprimer'
         });
         if (selected) {
-            const confirm = await vscode.window.showWarningMessage(`Êtes-vous sûr de vouloir supprimer la connexion "${selected.label}" ?`, { modal: true }, 'Oui');
-            if (confirm === 'Oui') {
+            const confirm = await vscode.window.showWarningMessage(`Supprimer le site "${selected.label}" de la liste des connexions ?`, { modal: true }, 'Supprimer');
+            if (confirm === 'Supprimer') {
                 await this.removeConnection(selected.connection.id);
-                vscode.window.showInformationMessage(`Connexion "${selected.label}" supprimée.`);
+                vscode.window.showInformationMessage(`Site supprimé : ${selected.label}.`);
                 // Retourner la nouvelle connexion active
                 return await this.getActiveConnection();
             }
@@ -245,24 +398,43 @@ class ConfigManager {
     }
     async promptForNewConnection() {
         const name = await vscode.window.showInputBox({
-            prompt: 'Nom de la connexion (optionnel)',
-            placeHolder: 'Mon site WordPress',
+            prompt: 'Nom d’affichage du site (optionnel)',
+            placeHolder: 'Mon site vitrine',
             ignoreFocusOut: true
         });
         const config = await this.promptForConfig();
         if (config) {
             config.name = name || config.siteUrl;
-            config.id = `wp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            config.id = `wp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             await this.addConnection(config);
             await this.setActiveConnection(config.id);
             return config;
         }
         return null;
     }
+    async refreshMcpTools(connectionId) {
+        const connection = connectionId
+            ? (await this.getAllConnections()).find(item => item.id === connectionId) || null
+            : await this.getActiveConnection();
+        if (!connection) {
+            vscode.window.showWarningMessage('Aucun site actif à synchroniser pour MCP.');
+            return null;
+        }
+        const apiConnector = new ApiConnector_1.ApiConnector(connection.siteUrl, connection.username, connection.applicationPassword);
+        try {
+            const updatedConnection = await this.hydrateConnectionWithCapabilities(connection, apiConnector);
+            await this.updateStoredConnection(updatedConnection);
+            return updatedConnection;
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Échec de la synchronisation MCP : ${error.message}`);
+            return null;
+        }
+    }
     async promptForConfig() {
         const siteUrl = await vscode.window.showInputBox({
-            prompt: 'Entrez l\'URL de votre site WordPress',
-            placeHolder: 'https://votresite.com',
+            prompt: 'URL du site WordPress',
+            placeHolder: 'https://votresite.fr',
             ignoreFocusOut: true,
             validateInput: (value) => {
                 try {
@@ -276,15 +448,34 @@ class ConfigManager {
         });
         if (!siteUrl)
             return null;
+        const vaultSiteFolder = await vscode.window.showInputBox({
+            prompt: 'Nom du dossier local associé à ce site',
+            placeHolder: 'site-example',
+            value: this.buildDefaultVaultSiteFolder(siteUrl),
+            ignoreFocusOut: true,
+            validateInput: (value) => {
+                const normalized = value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]+/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-+|-+$/g, '');
+                if (!normalized) {
+                    return 'Veuillez entrer un nom de dossier valide';
+                }
+                return null;
+            }
+        });
+        if (!vaultSiteFolder)
+            return null;
         const username = await vscode.window.showInputBox({
-            prompt: 'Entrez votre nom d\'utilisateur WordPress',
+            prompt: 'Identifiant WordPress',
             placeHolder: 'admin',
             ignoreFocusOut: true
         });
         if (!username)
             return null;
         let applicationPassword = await vscode.window.showInputBox({
-            prompt: 'Entrez votre mot de passe d\'application WordPress',
+            prompt: 'Mot de passe d’application WordPress',
             password: true,
             ignoreFocusOut: true
         });
@@ -298,17 +489,19 @@ class ConfigManager {
             const status = await apiConnector.getStatus();
             console.log('Statut reçu:', status);
             if (!status.active_plugins || status.active_plugins.length === 0) {
-                const msg = status.message || 'Aucun plugin de snippet compatible détecté.';
+                const msg = status.message || 'Aucun moteur de snippets compatible détecté.';
                 vscode.window.showErrorMessage(msg);
                 return null;
             }
-            const rawPlugins = Array.isArray(status.active_plugins) ? status.active_plugins : [];
-            const normalizedPlugins = rawPlugins.map((plugin) => this.normalizePlugin(String(plugin)));
-            const availablePlugins = normalizedPlugins.filter((plugin, index) => normalizedPlugins.indexOf(plugin) === index);
+            const availablePlugins = this.getSupportedPluginsFromStatus(status);
+            if (availablePlugins.length === 0) {
+                vscode.window.showErrorMessage('Aucun moteur de snippets compatible avec le companion public n’a été détecté.');
+                return null;
+            }
             let selectedPlugin;
             if (availablePlugins.length > 1) {
                 selectedPlugin = await vscode.window.showQuickPick(availablePlugins, {
-                    placeHolder: 'Plusieurs plugins de snippets sont actifs. Veuillez en choisir un.',
+                    placeHolder: 'Plusieurs moteurs de snippets sont détectés. Choisissez celui à utiliser.',
                 });
             }
             else {
@@ -318,17 +511,18 @@ class ConfigManager {
                 return null;
             }
             const config = {
-                id: `wp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: `wp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
                 name: siteUrl,
                 siteUrl,
+                vaultSiteFolder: this.normalizeVaultSiteFolder(vaultSiteFolder, siteUrl),
                 username,
                 applicationPassword,
                 plugin: this.normalizePlugin(selectedPlugin),
-                fluentSnippetsPath: selectedPlugin === 'FluentSnippets' ? status.fluent_snippets_path : undefined
             };
-            await this.saveConfig(config);
-            vscode.window.showInformationMessage(`Connecté avec succès à ${siteUrl} en utilisant ${selectedPlugin}.`);
-            return config;
+            const hydratedConfig = await this.hydrateConnectionWithCapabilities(config, apiConnector);
+            await this.saveConfig(hydratedConfig);
+            vscode.window.showInformationMessage(`Connexion prête pour ${siteUrl} avec le moteur ${selectedPlugin}.`);
+            return hydratedConfig;
         }
         catch (error) {
             vscode.window.showErrorMessage(`Échec de la connexion : ${error.message}`);
@@ -339,4 +533,7 @@ class ConfigManager {
 exports.ConfigManager = ConfigManager;
 ConfigManager.CONFIG_KEY = 'wordpressSnippets.connection';
 ConfigManager.MULTI_SITE_CONFIG_KEY = 'wordpressSnippets.multiSiteConfig';
+ConfigManager.WORKSPACE_CONNECTION_ID_SETTING = 'workspaceConnectionId';
+ConfigManager.WORKSPACE_SITE_FOLDER_SETTING = 'workspaceSiteFolder';
+ConfigManager.WORKSPACE_SYNC_ROLE_SETTING = 'syncRole';
 //# sourceMappingURL=ConfigManager.js.map

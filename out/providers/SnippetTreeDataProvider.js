@@ -130,11 +130,11 @@ class SnippetTreeDataProvider {
             const newStatus = !snippet.active;
             const success = await provider.toggleSnippet(snippet.id, newStatus);
             if (success) {
-                vscode.window.showInformationMessage(`Snippet "${snippet.name}" ${newStatus ? 'activated' : 'deactivated'}.`);
+                vscode.window.showInformationMessage(`Snippet "${snippet.name}" ${newStatus ? 'activé' : 'désactivé'}.`);
                 this.refresh();
             }
             else {
-                vscode.window.showErrorMessage(`Failed to toggle snippet "${snippet.name}".`);
+                vscode.window.showErrorMessage(`Impossible de changer l’état du snippet "${snippet.name}".`);
             }
         }
     }
@@ -168,22 +168,22 @@ function formatRelativeTime(dateString) {
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     if (seconds < 2) {
-        return 'just now';
+        return 'à l’instant';
     }
     if (seconds < 60) {
-        return `${seconds} seconds ago`;
+        return `il y a ${seconds} seconde${seconds > 1 ? 's' : ''}`;
     }
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
-        return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        return `il y a ${minutes} minute${minutes > 1 ? 's' : ''}`;
     }
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
-        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        return `il y a ${hours} heure${hours > 1 ? 's' : ''}`;
     }
     const days = Math.floor(hours / 24);
     if (days <= 7) {
-        return `${days} day${days > 1 ? 's' : ''} ago`;
+        return `il y a ${days} jour${days > 1 ? 's' : ''}`;
     }
     return date.toLocaleDateString();
 }
@@ -191,11 +191,11 @@ class SnippetItem extends vscode.TreeItem {
     constructor(snippet) {
         super(`[${snippet.id}] ${snippet.name}`, vscode.TreeItemCollapsibleState.None);
         this.snippet = snippet;
-        this.tooltip = `[${snippet.id}] ${this.snippet.name}\nModified: ${snippet.modified}\nDescription: ${snippet.description || ''}`;
+        this.tooltip = `[${snippet.id}] ${this.snippet.name}\nModifié : ${snippet.modified}\nDescription : ${snippet.description || ''}`;
         this.description = formatRelativeTime(snippet.modified);
         this.command = {
             command: 'wordpressSnippets.openSnippet',
-            title: 'Open Snippet',
+            title: 'Ouvrir le snippet',
             arguments: [this.snippet]
         };
         this.contextValue = 'snippet';

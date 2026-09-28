@@ -29,57 +29,51 @@ const fs = __importStar(require("fs/promises"));
 const path = __importStar(require("path"));
 const ApiConnector_1 = require("../core/ApiConnector");
 const ConfigManager_1 = require("../core/ConfigManager");
+const ObsidianVaultStorage_1 = require("../core/ObsidianVaultStorage");
+const FrontmatterEnrichmentService_1 = require("../services/FrontmatterEnrichmentService");
+const PhpLinter_1 = require("../utils/PhpLinter");
 class SnippetProvider {
     constructor(context) {
+        this.context = context;
         this._onDidChangeSnippets = new vscode.EventEmitter();
         this.onDidChangeSnippets = this._onDidChangeSnippets.event;
         this.apiConnector = null;
+        this.storage = null;
         this.engine = 'native';
+        this.syncingFiles = new Set();
+        this.enrichmentService = new FrontmatterEnrichmentService_1.FrontmatterEnrichmentService();
+        this.syncOptions = {
+            syncRole: 'owner',
+            canSyncToWordPress: () => true,
+            canWriteVaultFromRemote: () => true,
+            getStatusMessage: () => 'Ce workspace pilote la synchronisation.'
+        };
         this.configManager = new ConfigManager_1.ConfigManager(context);
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (workspaceFolders && workspaceFolders.length > 0) {
-            this.cachePath = path.join(workspaceFolders[0].uri.fsPath, '.snippet_cache');
-            this.backupPath = path.join(workspaceFolders[0].uri.fsPath, '.snippet_backups');
-        }
-        else {
-            this.cachePath = path.join(context.globalStorageUri.fsPath, 'snippet_cache');
-            this.backupPath = path.join(context.globalStorageUri.fsPath, 'snippet_backups');
-            vscode.window.showWarningMessage('No workspace folder is open. Snippet cache and backups will be stored globally.');
-        }
-    }
-    async _ensureBackupDir() {
-        try {
-            await fs.mkdir(this.backupPath, { recursive: true });
-        }
-        catch (error) {
-            console.error("Failed to create snippet backup directory", error);
-        }
-    }
-    async _ensureCacheDir() {
-        try {
-            await fs.mkdir(this.cachePath, { recursive: true });
-        }
-        catch (error) {
-            console.error("Failed to create snippet cache directory", error);
-        }
-    }
-    /**
-     * Validate snippet ID to prevent path traversal
-     */
-    validateSnippetId(id) {
-        if (typeof id === 'number') {
-            return Number.isInteger(id) && id > 0;
-        }
-        return /^\d+$/.test(id);
     }
     getSnippetCachePath(id) {
-        if (!this.validateSnippetId(id)) {
-            throw new Error(`Invalid snippet ID: ${id}`);
+        return this.storage ? this.storage.getSnippetFilePath(id) : '';
+    }
+    configureSync(options) {
+        this.syncOptions = options;
+    }
+    /**
+     * Snippets are sent to WordPress only from a trusted workspace, so that a
+     * cloned repository cannot push PHP code to a site through its settings.
+     */
+    canSyncToWordPress() {
+        return vscode.workspace.isTrusted && this.syncOptions.canSyncToWordPress();
+    }
+    canWriteVaultFromRemote() {
+        return this.syncOptions.canWriteVaultFromRemote();
+    }
+    getSyncStatusMessage() {
+        if (!vscode.workspace.isTrusted) {
+            return 'Workspace non approuvé : aucune modification n’est envoyée à WordPress.';
         }
-        return path.join(this.cachePath, `snippet-${id}.php`);
+        return this.syncOptions.getStatusMessage();
     }
     isSnippetFile(filePath) {
-        return path.dirname(filePath) === this.cachePath && path.basename(filePath).startsWith('snippet-');
+        return this.storage ? this.storage.isSnippetFile(filePath) : false;
     }
     /**
      * Strip any existing header block and <?php tag from code.
@@ -93,54 +87,62 @@ class SnippetProvider {
         cleaned = cleaned.replace(/\?>\s*$/, '');
         return cleaned.trim();
     }
-    sanitizeDescriptionForHeader(description) {
-        let cleaned = (description || '').replace(/\r?\n/g, ' ').trim();
-        cleaned = cleaned.replace(/^\*+\s*/, '');
-        if (/^@(?:active|status)\b/i.test(cleaned)) {
-            return '';
-        }
-        return cleaned;
-    }
-    /**
-     * Build the cache file content from a snippet.
-     * Single source of truth for cache file format.
-     */
-    buildCacheContent(snippet) {
-        const cleanCode = this.stripHeaderAndPhpTag(snippet.code);
-        const tags = snippet.tags ? `\n * Tags: ${snippet.tags}` : '';
-        const description = this.sanitizeDescriptionForHeader(snippet.description || '');
-        return `<?php
-/**
- * Snippet ID: ${snippet.id}
- * Name: ${snippet.name}
- * Description: ${description}${tags}
- * @active ${snippet.active}
- */
-
-${cleanCode}`;
-    }
-    /**
-     * Write snippet to cache file
-     */
     async writeCacheFile(snippet) {
-        const filePath = this.getSnippetCachePath(snippet.id);
-        const content = this.buildCacheContent(snippet);
-        await fs.writeFile(filePath, content);
+        if (!this.storage)
+            return;
+        const filePath = this.storage.getSnippetFilePath(snippet.id);
+        const openDocument = vscode.workspace.textDocuments.find(document => document.uri.fsPath === filePath);
+        if (openDocument?.isDirty) {
+            return;
+        }
+        await this.storage.write(snippet);
+    }
+    async ensureLocalSnippetFile(snippet) {
+        if (!this.storage) {
+            return;
+        }
+        const filePath = this.storage.getSnippetFilePath(snippet.id);
+        try {
+            await fs.access(filePath);
+            return;
+        }
+        catch {
+            await this.storage.write(snippet);
+        }
+    }
+    /**
+     * Refuse to send code with a PHP syntax error: on WordPress it would run on every request.
+     */
+    async ensureValidPhp(code, label) {
+        if (typeof code !== 'string' || code.trim() === '' || this.engine !== 'native') {
+            return true;
+        }
+        const result = await (0, PhpLinter_1.lintPhpCode)(code);
+        if (result.status !== 'error') {
+            return true;
+        }
+        const where = result.line ? ` (ligne ${result.line} du code)` : '';
+        vscode.window.showErrorMessage(`${label} non envoyé : erreur de syntaxe PHP${where}. ${result.message}`);
+        return false;
+    }
+    ensureWordPressWriteAllowed(actionLabel) {
+        if (this.canSyncToWordPress()) {
+            return true;
+        }
+        vscode.window.showWarningMessage(`${actionLabel} indisponible dans ce workspace. ${this.getSyncStatusMessage()}`);
+        return false;
     }
     async initialize() {
-        await this._ensureCacheDir();
-        await this._ensureBackupDir();
-        const config = await this.configManager.getConfig();
+        const config = await this.configManager.getActiveConnection();
         if (!config) {
-            const newConfig = await this.configManager.promptForConfig();
-            if (!newConfig) {
-                return false;
-            }
+            return false;
         }
-        const currentConfig = await this.configManager.getConfig();
+        const currentConfig = await this.configManager.getActiveConnection();
         if (!currentConfig) {
             return false;
         }
+        this.storage = new ObsidianVaultStorage_1.ObsidianVaultStorage(this.context, currentConfig.siteUrl, currentConfig.vaultSiteFolder);
+        await this.storage.initialize();
         this.apiConnector = new ApiConnector_1.ApiConnector(currentConfig.siteUrl, currentConfig.username, currentConfig.applicationPassword);
         this.engine = currentConfig.plugin === 'Code Snippets' ? 'code_snippets' : 'native';
         return true;
@@ -155,13 +157,15 @@ ${cleanCode}`;
                 console.error('API response is not an array:', typeof snippets);
                 throw new Error('La réponse de l\'API n\'est pas un tableau de snippets');
             }
-            for (const snippet of snippets) {
-                await this.writeCacheFile(snippet);
+            if (this.canWriteVaultFromRemote()) {
+                for (const snippet of snippets) {
+                    await this.writeCacheFile(snippet);
+                }
             }
             return snippets;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la récupération des snippets: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la récupération des snippets : ' + (error?.message || 'Erreur inconnue'));
             return [];
         }
     }
@@ -175,12 +179,17 @@ ${cleanCode}`;
         try {
             const snippet = await this.apiConnector.getSnippet(id, this.engine);
             if (snippet) {
-                await this.writeCacheFile(snippet);
+                if (this.canWriteVaultFromRemote()) {
+                    await this.writeCacheFile(snippet);
+                }
+                else {
+                    await this.ensureLocalSnippetFile(snippet);
+                }
             }
             return snippet;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la récupération du snippet: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la récupération du snippet : ' + (error?.message || 'Erreur inconnue'));
             return null;
         }
     }
@@ -188,13 +197,19 @@ ${cleanCode}`;
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
+        if (!this.ensureWordPressWriteAllowed('Creation de snippet')) {
+            return null;
+        }
+        if (!await this.ensureValidPhp(data.code, 'Snippet')) {
+            return null;
+        }
         try {
             const result = await this.apiConnector.createSnippet(data, this.engine);
             this._onDidChangeSnippets.fire();
             return result;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la création du snippet: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la création du snippet : ' + (error?.message || 'Erreur inconnue'));
             return null;
         }
     }
@@ -202,7 +217,13 @@ ${cleanCode}`;
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
         }
+        if (!this.ensureWordPressWriteAllowed('Mise a jour du snippet')) {
+            return false;
+        }
         if (typeof data.id === 'string' && data.id.startsWith('FS')) {
+            return false;
+        }
+        if (!await this.ensureValidPhp(data.code, `Snippet ${data.id}`)) {
             return false;
         }
         try {
@@ -211,13 +232,16 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la mise à jour du snippet: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour du snippet : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
     async toggleSnippet(id, active) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Changement de statut du snippet')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -234,13 +258,16 @@ ${cleanCode}`;
         }
         catch (error) {
             console.error(`Error toggling snippet ${id}:`, error);
-            vscode.window.showErrorMessage('Erreur lors du changement de statut: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors du changement de statut : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
     async deleteSnippet(id) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Suppression du snippet')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -260,84 +287,47 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la suppression du snippet: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la suppression du snippet : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
-    /**
-     * Parse the header from a cache file and extract metadata + code
-     */
-    parseSnippetCacheFile(content) {
-        const result = {
-            id: null,
-            name: null,
-            description: null,
-            tags: null,
-            active: null,
-            code: ''
-        };
-        const idMatch = content.match(/\*\s*Snippet ID:\s*(\d+)/);
-        if (idMatch) {
-            result.id = parseInt(idMatch[1], 10);
-        }
-        const nameMatch = content.match(/\*\s*Name:\s*(.*)/);
-        if (nameMatch) {
-            result.name = nameMatch[1].trim();
-        }
-        const descMatch = content.match(/^\s*\*\s*Description:\s*(.*)$/m);
-        if (descMatch) {
-            result.description = this.sanitizeDescriptionForHeader(descMatch[1]);
-        }
-        const tagsMatch = content.match(/\*\s*Tags:\s*(.*)/);
-        if (tagsMatch) {
-            result.tags = tagsMatch[1].trim();
-        }
-        const activeMatch = content.match(/@active\s+(true|false)/);
-        if (activeMatch) {
-            result.active = activeMatch[1] === 'true';
-        }
-        // Extract code: everything after the header block closing */
-        const headerEndIndex = content.indexOf('*/');
-        if (headerEndIndex !== -1) {
-            result.code = content.substring(headerEndIndex + 2).trim();
-        }
-        return result;
-    }
     async updateSnippetFromFile(filePath) {
-        if (!this.isSnippetFile(filePath)) {
+        if (!this.isSnippetFile(filePath) || !this.storage) {
+            return;
+        }
+        if (!this.canSyncToWordPress()) {
             return;
         }
         if (!this.apiConnector) {
-            vscode.window.showErrorMessage('Cannot update snippet, API is not connected.');
+            vscode.window.showErrorMessage('Impossible de synchroniser ce snippet : l’API WordPress n’est pas connectée.');
             return;
         }
+        if (this.syncingFiles.has(filePath)) {
+            return;
+        }
+        this.syncingFiles.add(filePath);
         try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const parsed = this.parseSnippetCacheFile(content);
-            if (!parsed.id) {
-                vscode.window.showWarningMessage(`Could not determine Snippet ID for ${path.basename(filePath)}.`);
+            // Read from storage using id parsed from filename
+            const idMatch = path.basename(filePath).match(/snippet-(.+)\.md$/);
+            if (!idMatch)
+                return;
+            const id = idMatch[1];
+            const parsed = await this.storage.read(id);
+            if (!parsed) {
+                vscode.window.showWarningMessage(`Impossible de lire le snippet local ${path.basename(filePath)}.`);
                 return;
             }
-            const id = parsed.id;
             // Fetch original from API for backup
             const originalSnippet = await this.apiConnector.getSnippet(id, this.engine);
             if (!originalSnippet) {
-                vscode.window.showErrorMessage(`Snippet with ID ${id} no longer exists on server.`);
+                vscode.window.showErrorMessage(`Le snippet ${id} n’existe plus sur le site WordPress.`);
                 return;
             }
             // Create backup before syncing
-            const backupDir = path.join(this.backupPath, `snippet-${id}`);
-            await fs.mkdir(backupDir, { recursive: true });
-            const now = new Date();
-            const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-            await fs.writeFile(path.join(backupDir, `backup-${ts}-pre-sync.json`), JSON.stringify(originalSnippet, null, 2));
-            // Limit backups
-            const backups = await fs.readdir(backupDir);
-            const sorted = backups.filter(f => f.endsWith('.json')).sort().reverse();
-            if (sorted.length > 20) {
-                for (const old of sorted.slice(20)) {
-                    await fs.unlink(path.join(backupDir, old));
-                }
+            await this.storage.createBackup(originalSnippet);
+            // Checked before stripping so that reported lines match the file
+            if (!await this.ensureValidPhp(parsed.code, path.basename(filePath))) {
+                return;
             }
             // Strip any header artifacts from extracted code
             const cleanCode = this.stripHeaderAndPhpTag(parsed.code);
@@ -346,20 +336,26 @@ ${cleanCode}`;
                 name: parsed.name || originalSnippet.name,
                 description: parsed.description !== null ? parsed.description : originalSnippet.description,
                 code: cleanCode,
-                active: originalSnippet.active,
+                active: parsed.active ?? originalSnippet.active,
                 tags: parsed.tags || originalSnippet.tags,
             };
-            await this.updateSnippet(updateData);
+            if (!await this.updateSnippet(updateData)) {
+                return;
+            }
             // Re-fetch from API and rewrite cache to ensure clean header
             const updatedSnippet = await this.apiConnector.getSnippet(id, this.engine);
             if (updatedSnippet) {
                 await this.writeCacheFile(updatedSnippet);
+                await this.enrichmentService.enrichSnippetRelationsForFile(filePath);
             }
-            vscode.window.setStatusBarMessage(`Snippet "${updateData.name}" synced!`, 3000);
+            vscode.window.setStatusBarMessage(`Snippet synchronisé : ${updateData.name}`, 3000);
         }
         catch (error) {
             console.error(`Failed to update snippet from file ${filePath}`, error);
-            vscode.window.showErrorMessage(`Failed to sync snippet: ${error.message}`);
+            vscode.window.showErrorMessage(`Impossible de synchroniser le snippet : ${error.message}`);
+        }
+        finally {
+            this.syncingFiles.delete(filePath);
         }
     }
     /**
@@ -368,6 +364,9 @@ ${cleanCode}`;
     async renameSnippet(id, newName) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Renommage du snippet')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -382,7 +381,7 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors du renommage: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors du renommage : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
@@ -392,6 +391,9 @@ ${cleanCode}`;
     async updateDescription(id, newDescription) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Mise a jour de la description')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -406,7 +408,7 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la mise à jour de la description: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour de la description : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
@@ -416,6 +418,9 @@ ${cleanCode}`;
     async updateTags(id, newTags) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Mise a jour des tags')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -430,13 +435,16 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la mise à jour des tags: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour des mots-clés : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
     async updateAttribution(id, targetMode, targetPostTypes, targetPostIds) {
         if (!this.apiConnector) {
             throw new Error('Le fournisseur n\'est pas initialisé');
+        }
+        if (!this.ensureWordPressWriteAllowed('Mise a jour des attributions')) {
+            return false;
         }
         if (typeof id === 'string' && id.startsWith('FS')) {
             return false;
@@ -455,29 +463,23 @@ ${cleanCode}`;
             return true;
         }
         catch (error) {
-            vscode.window.showErrorMessage('Erreur lors de la mise à jour des attributions: ' + (error?.message || 'Erreur inconnue'));
+            vscode.window.showErrorMessage('Erreur lors de la mise à jour des attributions : ' + (error?.message || 'Erreur inconnue'));
             return false;
         }
     }
     async getBackups(snippetId) {
-        const backupDir = path.join(this.backupPath, `snippet-${snippetId}`);
-        try {
-            const files = await fs.readdir(backupDir);
-            return files.filter(f => f.endsWith('.json')).sort().reverse();
-        }
-        catch (error) {
-            if (error.code === 'ENOENT') {
-                return [];
-            }
-            console.error(`Failed to read backups for snippet ${snippetId}`, error);
-            return [];
-        }
+        return this.storage ? this.storage.getBackups(snippetId) : [];
     }
     async restoreBackup(snippetId, backupFile) {
-        const backupFilePath = path.join(this.backupPath, `snippet-${snippetId}`, backupFile);
+        if (!this.storage)
+            return false;
+        if (!this.ensureWordPressWriteAllowed('Restauration de sauvegarde')) {
+            return false;
+        }
         try {
-            const backupContent = await fs.readFile(backupFilePath, 'utf-8');
-            const snippetData = JSON.parse(backupContent);
+            const snippetData = await this.storage.restoreBackup(snippetId, backupFile);
+            if (!snippetData)
+                return false;
             const updateData = {
                 id: snippetData.id,
                 name: snippetData.name,
@@ -490,7 +492,7 @@ ${cleanCode}`;
         }
         catch (error) {
             console.error(`Failed to restore backup ${backupFile}`, error);
-            vscode.window.showErrorMessage(`Failed to restore backup: ${error.message}`);
+            vscode.window.showErrorMessage(`Impossible de restaurer la sauvegarde : ${error.message}`);
             return false;
         }
     }

@@ -12,5 +12,5 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test", "out", "ignore BACKUP V1.3", "backup*", "**/backup*/**"]
+  "exclude": ["node_modules", ".vscode-test", "out"]
 }

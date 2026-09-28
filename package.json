@@ -2,16 +2,29 @@
     "name": "wordpress-snippets-manager",
     "displayName": "%extension.displayName%",
     "description": "%extension.description%",
-    "version": "3.0.1",
+    "version": "4.2.1",
     "publisher": "trae-ai",
     "author": "eliodata.com",
     "icon": "assets/icon.png",
     "repository": {
         "type": "git",
-        "url": "https://github.com/eliodata/wordpress-snippets-manager.git"
+        "url": "https://github.com/eliodata/eliodata-snippet-hub.git"
     },
     "engines": {
-        "vscode": "^1.60.0"
+        "vscode": "^1.90.0"
+    },
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": "limited",
+            "description": "Dans un workspace non approuvé, les snippets restent consultables mais aucune modification n’est envoyée à WordPress, et les réglages de stockage et de synchronisation du workspace sont ignorés.",
+            "restrictedConfigurations": [
+                "wordpressSnippets.workspaceStoragePath",
+                "wordpressSnippets.obsidianVaultPath",
+                "wordpressSnippets.workspaceConnectionId",
+                "wordpressSnippets.workspaceSiteFolder",
+                "wordpressSnippets.syncRole"
+            ]
+        }
     },
     "categories": [
         "Other"
@@ -22,7 +35,7 @@
         "onCommand:wordpressSnippets.list",
         "onCommand:wordpressSnippets.manageConnections",
         "onCommand:wordpressSnippets.switchConnection",
-        "workspaceContains:.snippet_cache"
+        "workspaceContains:**/*.md"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -135,6 +148,41 @@
                 "command": "wordpressSnippets.editAttribution",
                 "title": "%command.editAttribution%",
                 "icon": "$(target)"
+            },
+            {
+                "command": "wordpressSnippets.refreshMcpTools",
+                "title": "%command.refreshMcpTools%",
+                "icon": "$(sync)"
+            },
+            {
+                "command": "wordpressSnippets.listMcpTools",
+                "title": "%command.listMcpTools%",
+                "icon": "$(tools)"
+            },
+            {
+                "command": "wordpressSnippets.callMcpTool",
+                "title": "%command.callMcpTool%",
+                "icon": "$(play)"
+            },
+            {
+                "command": "wordpressSnippets.callCurrentMcpTool",
+                "title": "%command.callCurrentMcpTool%",
+                "icon": "$(rocket)"
+            },
+            {
+                "command": "wordpressSnippets.createCustomMcpTool",
+                "title": "%command.createCustomMcpTool%",
+                "icon": "$(add)"
+            },
+            {
+                "command": "wordpressSnippets.updateCustomMcpTool",
+                "title": "%command.updateCustomMcpTool%",
+                "icon": "$(edit)"
+            },
+            {
+                "command": "wordpressSnippets.deleteCustomMcpTool",
+                "title": "%command.deleteCustomMcpTool%",
+                "icon": "$(trash)"
             }
         ],
         "menus": {
@@ -204,6 +252,42 @@
                     "when": "view == wordpress-snippets-view",
                     "group": "navigation@11",
                     "icon": "$(globe)"
+                },
+                {
+                    "command": "wordpressSnippets.refreshMcpTools",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@12",
+                    "icon": "$(sync)"
+                },
+                {
+                    "command": "wordpressSnippets.listMcpTools",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@13",
+                    "icon": "$(tools)"
+                },
+                {
+                    "command": "wordpressSnippets.callMcpTool",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@14",
+                    "icon": "$(play)"
+                },
+                {
+                    "command": "wordpressSnippets.createCustomMcpTool",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@15",
+                    "icon": "$(add)"
+                },
+                {
+                    "command": "wordpressSnippets.updateCustomMcpTool",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@16",
+                    "icon": "$(edit)"
+                },
+                {
+                    "command": "wordpressSnippets.deleteCustomMcpTool",
+                    "when": "view == wordpress-snippets-view",
+                    "group": "navigation@17",
+                    "icon": "$(trash)"
                 }
             ],
             "view/item/context": [
@@ -267,7 +351,8 @@
             "wordpress-snippets-manager": [
                 {
                     "id": "wordpress-snippets-view",
-                    "name": "%view.snippets%"
+                    "name": "%view.snippets%",
+                    "icon": "assets/wordpress-logo.svg"
                 }
             ]
         },
@@ -282,7 +367,75 @@
                 "key": "escape",
                 "when": "view == wordpress-snippets-view"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "WordPress Companion",
+            "properties": {
+                "wordpressSnippets.workspaceStoragePath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Chemin absolu vers le **dossier de stockage local** des snippets, sauvegardes et caches MCP. Si ce champ est vide, l’extension crée et utilise automatiquement un dossier interne. Aucune configuration spéciale n’est nécessaire au démarrage de l’IDE. Exemple dans un vault Obsidian : `/Users/votre-nom/Documents/Obsidian/Vault/wordpress-companion`."
+                },
+                "wordpressSnippets.obsidianVaultPath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDeprecationMessage": "Utilisez `wordpressSnippets.workspaceStoragePath` à la place.",
+                    "markdownDescription": "Ancien nom du chemin de stockage local. Conservé uniquement pour compatibilité avec les versions précédentes."
+                },
+                "wordpressSnippets.workspaceConnectionId": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "window",
+                    "markdownDescription": "Option avancée. ID de la **connexion WordPress privilégiée** pour le workspace courant."
+                },
+                "wordpressSnippets.workspaceSiteFolder": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "window",
+                    "markdownDescription": "Option avancée. Nom du dossier `site-*` à associer au workspace courant dans le stockage local. Exemple : `site-mon-site`."
+                },
+                "wordpressSnippets.syncRole": {
+                    "type": "string",
+                    "default": "owner",
+                    "scope": "window",
+                    "enum": [
+                        "owner",
+                        "editor",
+                        "off"
+                    ],
+                    "markdownEnumDescriptions": [
+                        "Le workspace courant pilote la synchronisation entre WordPress et le stockage local.",
+                        "Le workspace courant reste en lecture seule locale pendant qu’un autre workspace pilote la synchronisation.",
+                        "La synchronisation de ce workspace est désactivée."
+                    ],
+                    "markdownDescription": "Choisit le **rôle de synchronisation** du workspace courant entre WordPress et le stockage local."
+                },
+                "wordpressSnippets.domainRules": {
+                    "type": "array",
+                    "default": [],
+                    "scope": "resource",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "domain",
+                            "keywords"
+                        ],
+                        "properties": {
+                            "domain": {
+                                "type": "string"
+                            },
+                            "keywords": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "markdownDescription": "Règles utilisées pour remplir le champ `domain` du frontmatter des snippets. Chaque règle associe un domaine à des mots-clés recherchés dans le nom, le titre et le code. Laissez vide pour utiliser les règles WordPress génériques. Exemple : `[{ \"domain\": \"facturation\", \"keywords\": [\"invoice\", \"facture\"] }]`."
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
@@ -294,6 +447,7 @@
     "devDependencies": {
         "@types/node": "^16.x",
         "@types/vscode": "^1.60.0",
+        "@types/yaml": "^1.9.6",
         "@typescript-eslint/eslint-plugin": "^5.x",
         "@typescript-eslint/parser": "^5.x",
         "eslint": "^8.x",
@@ -301,6 +455,7 @@
         "vsce": "^2.15.0"
     },
     "dependencies": {
-        "axios": "^1.6.0"
+        "axios": "^1.6.0",
+        "yaml": "^2.8.3"
     }
 }

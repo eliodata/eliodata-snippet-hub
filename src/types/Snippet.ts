@@ -28,14 +28,46 @@ export interface SnippetUpdateData extends SnippetCreateData {
     id: string | number;
 }
 
+export interface McpToolDefinition {
+    name: string;
+    description: string;
+    readOnlyHint?: boolean;
+    inputSchema?: Record<string, unknown>;
+}
+
+export interface McpToolsResponse {
+    server: string;
+    version: string;
+    readonly: boolean;
+    tools: McpToolDefinition[];
+}
+
+export interface McpCustomToolDefinition {
+    name: string;
+    description: string;
+    readOnlyHint: boolean;
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    route: string;
+    passAs: 'query' | 'json';
+    inputSchema?: Record<string, unknown>;
+}
+
+export interface McpCustomToolsResponse {
+    tools: McpCustomToolDefinition[];
+}
+
 export interface WordPressConnectionConfig {
     id: string;
     name: string;
     siteUrl: string;
+    vaultSiteFolder?: string;
     username: string;
     applicationPassword: string;
-    plugin: 'IDE Snippets' | 'IDE Native' | 'Code Snippets' | 'FluentSnippets';
-    fluentSnippetsPath?: string;
+    plugin: 'IDE Snippets' | 'IDE Native' | 'Code Snippets';
+    mcpEnabled?: boolean;
+    mcpReadonly?: boolean;
+    mcpTools?: McpToolDefinition[];
+    mcpLastSyncAt?: string;
     isActive?: boolean;
 }
 
@@ -43,3 +75,5 @@ export interface MultiSiteConfig {
     connections: WordPressConnectionConfig[];
     activeConnectionId?: string;
 }
+
+export type WorkspaceSyncRole = 'owner' | 'editor' | 'off';

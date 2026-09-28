@@ -1,4 +1,4 @@
-import { PHPAnalysisResult } from '../types/Vector';
+import { PHPAnalysisResult } from '../types/PHPAnalysis';
 
 export class PHPAnalyzer {
     private wordpressFunctions = [
@@ -17,9 +17,9 @@ export class PHPAnalyzer {
         'WC_Product', 'WC_Cart', 'WC_Checkout'
     ];
 
-    private customPostTypes = [
-        'client', 'formateur', 'action-de-formation', 'salle-de-formation',
-        'shop_order', 'product', 'shop_coupon', 'shop_webhook'
+    private knownPostTypes = [
+        'post', 'page', 'attachment', 'nav_menu_item',
+        'shop_order', 'product', 'product_variation', 'shop_coupon', 'shop_webhook'
     ];
 
     async analyze(code: string): Promise<PHPAnalysisResult> {
@@ -121,7 +121,6 @@ export class PHPAnalyzer {
 
     private analyzeClasses(code: string, result: PHPAnalysisResult): void {
         const classRegex = /class\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        const lines = code.split('\n');
         let match;
 
         while ((match = classRegex.exec(code)) !== null) {
@@ -186,11 +185,31 @@ export class PHPAnalyzer {
     }
 
     private analyzeCPTReferences(code: string, result: PHPAnalysisResult): void {
-        for (const cpt of this.customPostTypes) {
-            if (code.includes(cpt) || code.includes(`'${cpt}'`) || code.includes(`"${cpt}"`)) {
-                result.cptReferences.push(cpt);
+        const found = new Set<string>();
+
+        for (const cpt of this.knownPostTypes) {
+            if (code.includes(`'${cpt}'`) || code.includes(`"${cpt}"`)) {
+                found.add(cpt);
             }
         }
+
+        // Post types declared or queried by the snippet itself
+        const patterns = [
+            /register_post_type\s*\(\s*['"]([a-z0-9_-]+)['"]/gi,
+            /['"]post_type['"]\s*=>\s*['"]([a-z0-9_-]+)['"]/gi,
+            /get_post_type\s*\([^)]*\)\s*[!=]==?\s*['"]([a-z0-9_-]+)['"]/gi,
+            /['"]([a-z0-9_-]+)['"]\s*[!=]==?\s*get_post_type\s*\(/gi,
+            /is_singular\s*\(\s*['"]([a-z0-9_-]+)['"]/gi
+        ];
+
+        for (const pattern of patterns) {
+            let match;
+            while ((match = pattern.exec(code)) !== null) {
+                found.add(match[1]);
+            }
+        }
+
+        result.cptReferences.push(...found);
     }
 
     private analyzeWooCommerceReferences(code: string, result: PHPAnalysisResult): void {

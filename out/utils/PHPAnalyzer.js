@@ -17,9 +17,9 @@ class PHPAnalyzer {
             'wc_get_checkout', 'wc_get_customer', 'WC_Order',
             'WC_Product', 'WC_Cart', 'WC_Checkout'
         ];
-        this.customPostTypes = [
-            'client', 'formateur', 'action-de-formation', 'salle-de-formation',
-            'shop_order', 'product', 'shop_coupon', 'shop_webhook'
+        this.knownPostTypes = [
+            'post', 'page', 'attachment', 'nav_menu_item',
+            'shop_order', 'product', 'product_variation', 'shop_coupon', 'shop_webhook'
         ];
     }
     async analyze(code) {
@@ -110,7 +110,6 @@ class PHPAnalyzer {
     }
     analyzeClasses(code, result) {
         const classRegex = /class\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        const lines = code.split('\n');
         let match;
         while ((match = classRegex.exec(code)) !== null) {
             const className = match[1];
@@ -164,11 +163,27 @@ class PHPAnalyzer {
         }
     }
     analyzeCPTReferences(code, result) {
-        for (const cpt of this.customPostTypes) {
-            if (code.includes(cpt) || code.includes(`'${cpt}'`) || code.includes(`"${cpt}"`)) {
-                result.cptReferences.push(cpt);
+        const found = new Set();
+        for (const cpt of this.knownPostTypes) {
+            if (code.includes(`'${cpt}'`) || code.includes(`"${cpt}"`)) {
+                found.add(cpt);
             }
         }
+        // Post types declared or queried by the snippet itself
+        const patterns = [
+            /register_post_type\s*\(\s*['"]([a-z0-9_-]+)['"]/gi,
+            /['"]post_type['"]\s*=>\s*['"]([a-z0-9_-]+)['"]/gi,
+            /get_post_type\s*\([^)]*\)\s*[!=]==?\s*['"]([a-z0-9_-]+)['"]/gi,
+            /['"]([a-z0-9_-]+)['"]\s*[!=]==?\s*get_post_type\s*\(/gi,
+            /is_singular\s*\(\s*['"]([a-z0-9_-]+)['"]/gi
+        ];
+        for (const pattern of patterns) {
+            let match;
+            while ((match = pattern.exec(code)) !== null) {
+                found.add(match[1]);
+            }
+        }
+        result.cptReferences.push(...found);
     }
     analyzeWooCommerceReferences(code, result) {
         for (const wooFunction of this.wooCommerceFunctions) {

@@ -1,8 +1,15 @@
 .vscode/**
 .vscode-test/**
 src/**
+scripts/**
 .gitignore
 tsconfig.json
 **/*.map
 .DS_Store
-ide-snippets-bridge/**
+**/.DS_Store
+.snippet_cache/**
+.snippet_backups/**
+*.vsix
+*.zip
+package-lock.json
+eliodata-snippet-hub/**

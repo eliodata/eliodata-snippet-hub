@@ -1,15 +1,15 @@
 <?php
 /**
- * Plugin Name: Eliodata Snippet Hub
+ * Plugin Name: Eliodata MCP Bridge
  * Plugin URI: https://wordpress.org/plugins/eliodata-snippet-hub/
- * Description: Native snippet engine and secure IDE bridge for remote snippet management from Trae AI and VS Code.
- * Version: 2.0.0
+ * Description: WordPress MCP bridge with native snippet management, remote IDE control, and per-site custom MCP tools.
+ * Version: 4.2.2
  * Author: Eliodata
  * Author URI: https://eliodata.com
  * License: GPL v3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
- * Requires at least: 5.0
- * Tested up to: 6.9
+ * Requires at least: 5.6
+ * Tested up to: 7.1
  * Requires PHP: 7.4
  * Text Domain: eliodata-snippet-hub
  *
@@ -23,13 +23,19 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ELIODATA_SNIPPET_HUB_VERSION', '2.0.0');
+define('ELIODATA_SNIPPET_HUB_VERSION', '4.2.2');
 define('ELIODATA_SNIPPET_HUB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ELIODATA_SNIPPET_HUB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
-// Include the API endpoint class
+// Include the API endpoint classes
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-security.php';
 require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-api.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-mcp-tool-provider.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-mcp-builtin-tools.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-mcp-builtin-dispatcher.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-mcp.php';
+require_once ELIODATA_SNIPPET_HUB_PLUGIN_DIR . 'includes/class-eliodata-snippet-hub-mcp-servers.php';
 
 /**
  * Main plugin class
@@ -40,7 +46,19 @@ class IDE_Snippets_Bridge {
 
     /** @var IDE_Snippets_Bridge|null */
     private static $instance = null;
-    private $runtime_executed = false;
+    /** @var array Snippet ids already executed during this request. */
+    private $executed_snippet_ids = [];
+
+    /** @var int Snippet whose top-level code is being executed. */
+    private $current_snippet_id = 0;
+
+    /** @var array Temporary file path => snippet id, to attribute fatal errors. */
+    private $runtime_snippet_files = [];
+
+    /** @var array Snippet id => lines stripped before the code body. */
+    private $runtime_line_offsets = [];
+
+    private $shutdown_handler_registered = false;
 
     /**
      * Get plugin instance (singleton)
@@ -65,8 +83,9 @@ class IDE_Snippets_Bridge {
      * Initialize hooks
      */
     private function init_hooks() {
+        Eliodata_Snippet_Hub_Security::init();
         add_action('rest_api_init', [$this, 'init_api']);
-        add_action('admin_notices', [$this, 'check_dependencies']);
+        add_action('admin_notices', [$this, 'render_runtime_notices']);
         add_action('admin_menu', [$this, 'register_admin_menu']);
         add_action('admin_init', [$this, 'handle_admin_requests']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -87,24 +106,10 @@ class IDE_Snippets_Bridge {
     public function init_api() {
         $api = new IDE_Snippets_API();
         $api->register_routes();
-    }
 
-    /**
-     * Check for required dependencies and display admin notice if missing
-     */
-    public function check_dependencies() {
-        if (!is_admin()) {
-            return;
+        foreach (Eliodata_Snippet_Hub_MCP_Registry::build_servers() as $server) {
+            $server->register_routes();
         }
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if ($screen && isset($screen->id) && is_string($screen->id) && strpos($screen->id, 'eliodata-snippet-hub') === false) {
-            return;
-        }
-        echo '<div class="notice notice-info is-dismissible">';
-        echo '<p><strong>' . esc_html__('Eliodata Snippet Hub:', 'eliodata-snippet-hub') . '</strong> ';
-        echo esc_html__('The native Eliodata Snippet Hub engine is active. Additional compatibility can be enabled through addons.', 'eliodata-snippet-hub');
-        echo '</p>';
-        echo '</div>';
     }
 
     /**
@@ -115,14 +120,14 @@ class IDE_Snippets_Bridge {
             include_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
 
-        if (version_compare(get_bloginfo('version'), '5.0', '<')) {
+        if (version_compare(get_bloginfo('version'), '5.6', '<')) {
             deactivate_plugins(ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME);
-            wp_die(esc_html__('Eliodata Snippet Hub requires WordPress 5.0 or higher.', 'eliodata-snippet-hub'));
+            wp_die(esc_html__('Eliodata MCP Bridge requires WordPress 5.6 or higher.', 'eliodata-snippet-hub'));
         }
 
         if (version_compare(PHP_VERSION, '7.4', '<')) {
             deactivate_plugins(ELIODATA_SNIPPET_HUB_PLUGIN_BASENAME);
-            wp_die(esc_html__('Eliodata Snippet Hub requires PHP 7.4 or higher.', 'eliodata-snippet-hub'));
+            wp_die(esc_html__('Eliodata MCP Bridge requires PHP 7.4 or higher.', 'eliodata-snippet-hub'));
         }
 
         IDE_Snippets_API::create_native_table();
@@ -153,9 +158,9 @@ class IDE_Snippets_Bridge {
 
     public function register_admin_menu() {
         add_menu_page(
-            esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
-            esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
-            'manage_options',
+            esc_html__('Eliodata MCP Bridge', 'eliodata-snippet-hub'),
+            esc_html__('Eliodata MCP Bridge', 'eliodata-snippet-hub'),
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub',
             [$this, 'render_admin_page'],
             $this->get_admin_menu_icon_data_uri(),
@@ -164,36 +169,36 @@ class IDE_Snippets_Bridge {
 
         add_submenu_page(
             'eliodata-snippet-hub',
-            esc_html__('All snippets', 'eliodata-snippet-hub'),
-            esc_html__('All snippets', 'eliodata-snippet-hub'),
-            'manage_options',
+            esc_html__('Snippets', 'eliodata-snippet-hub'),
+            esc_html__('Snippets', 'eliodata-snippet-hub'),
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub',
             [$this, 'render_admin_page']
         );
 
         add_submenu_page(
             'eliodata-snippet-hub',
-            esc_html__('New snippet', 'eliodata-snippet-hub'),
-            esc_html__('New snippet', 'eliodata-snippet-hub'),
-            'manage_options',
+            esc_html__('Nouveau snippet', 'eliodata-snippet-hub'),
+            esc_html__('Nouveau snippet', 'eliodata-snippet-hub'),
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub-new',
             [$this, 'render_edit_page']
         );
 
         add_submenu_page(
             'eliodata-snippet-hub',
-            esc_html__('Edit snippet', 'eliodata-snippet-hub'),
+            esc_html__('Modifier le snippet', 'eliodata-snippet-hub'),
             '',
-            'manage_options',
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub-edit',
             [$this, 'render_edit_page']
         );
 
         add_submenu_page(
             'eliodata-snippet-hub',
-            esc_html__('Content targeting', 'eliodata-snippet-hub'),
-            esc_html__('Content targeting', 'eliodata-snippet-hub'),
-            'manage_options',
+            esc_html__('Attributions', 'eliodata-snippet-hub'),
+            esc_html__('Attributions', 'eliodata-snippet-hub'),
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub-assignments',
             [$this, 'render_assignments_page']
         );
@@ -202,9 +207,18 @@ class IDE_Snippets_Bridge {
             'eliodata-snippet-hub',
             esc_html__('Import / Export', 'eliodata-snippet-hub'),
             esc_html__('Import / Export', 'eliodata-snippet-hub'),
-            'manage_options',
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
             'eliodata-snippet-hub-import-export',
             [$this, 'render_import_export_page']
+        );
+
+        add_submenu_page(
+            'eliodata-snippet-hub',
+            esc_html__('Outils MCP', 'eliodata-snippet-hub'),
+            esc_html__('Outils MCP', 'eliodata-snippet-hub'),
+            Eliodata_Snippet_Hub_Security::get_required_capability(),
+            'eliodata-snippet-hub-mcp',
+            [$this, 'render_mcp_page']
         );
     }
 
@@ -711,6 +725,270 @@ class IDE_Snippets_Bridge {
                 initBulkSelection();
             });
         })(jQuery);');
+
+        wp_add_inline_style('wp-codemirror', '
+            .ide-snippets-admin .ide-admin-header{position:sticky;top:32px;z-index:20;display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;margin:0 0 14px;padding:8px 14px;background:#fff;border:1px solid #dcdcde;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+            .ide-snippets-admin .ide-admin-brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:#1d2327;}
+            .ide-snippets-admin .ide-admin-brand img{border-radius:6px;}
+            .ide-snippets-admin .ide-admin-version{font-weight:400;font-size:11px;color:#646970;background:#f0f0f1;border-radius:999px;padding:1px 7px;}
+            .ide-snippets-admin .ide-admin-nav{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto;}
+            .ide-snippets-admin .ide-admin-nav a{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;color:#2c3338;text-decoration:none;font-weight:500;}
+            .ide-snippets-admin .ide-admin-nav a:hover{background:#f0f0f1;color:#1d2327;}
+            .ide-snippets-admin .ide-admin-nav a:focus{box-shadow:0 0 0 2px #2271b1;outline:none;}
+            .ide-snippets-admin .ide-admin-nav a.is-current{background:#2271b1;color:#fff;}
+            .ide-snippets-admin .ide-admin-nav .dashicons{font-size:16px;width:16px;height:16px;}
+            .ide-snippets-admin > h1{margin-bottom:4px;}
+            @media (max-width: 782px){
+                .ide-snippets-admin .ide-admin-header{position:static;}
+                .ide-snippets-admin .ide-admin-nav{margin-left:0;}
+            }
+            .ide-snippets-admin .ide-mcp-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:20px;align-items:start;}
+            .ide-snippets-admin .ide-mcp-stack{display:grid;gap:20px;min-width:0;}
+            .ide-snippets-admin .ide-mcp-aside{position:sticky;top:104px;}
+            .ide-snippets-admin .ide-mcp-muted{color:#646970;margin-top:0;}
+            .ide-snippets-admin .ide-snippets-card .ide-mcp-card-note{display:block;margin-top:4px;font-size:12px;color:#8a5a00;}
+            .ide-snippets-admin .ide-mcp-table td,.ide-snippets-admin .ide-mcp-table th{vertical-align:top;}
+            .ide-snippets-admin .ide-mcp-table tr.is-selected td{box-shadow:inset 0 0 0 9999px rgba(34,113,177,.06);}
+            .ide-snippets-admin .ide-mcp-table tr.is-selected td:first-child{box-shadow:inset 3px 0 0 #2271b1,inset 0 0 0 9999px rgba(34,113,177,.06);}
+            .ide-snippets-admin .ide-mcp-col-tool{min-width:220px;}
+            .ide-snippets-admin .ide-mcp-tool-name{font-weight:600;font-size:13px;}
+            .ide-snippets-admin .ide-mcp-desc{margin:4px 0 0;color:#1d2327;}
+            .ide-snippets-admin .ide-mcp-route{margin-top:4px;}
+            .ide-snippets-admin .ide-mcp-route code{font-size:11px;color:#50575e;background:transparent;padding:0;}
+            .ide-snippets-admin .ide-mcp-warning{margin-top:6px;padding:4px 8px;border-left:3px solid #dba617;background:#fcf9e8;font-size:12px;}
+            .ide-snippets-admin .ide-mcp-col-actions{width:1%;white-space:nowrap;}
+            .ide-snippets-admin .ide-mcp-col-actions form{display:inline;}
+            .ide-snippets-admin .ide-mcp-col-actions .ide-snippets-actions{flex-wrap:nowrap;gap:4px;}
+            .ide-snippets-admin .ide-mcp-table .ide-mcp-col-profiles{width:1%;white-space:nowrap;}
+            .ide-snippets-admin .ide-mcp-table .ide-mcp-col-origin{width:1%;}
+            .ide-snippets-admin .ide-mcp-table .ide-badge{white-space:nowrap;}
+                        .ide-snippets-admin .ide-badge-native{background:#f0f0f1;color:#3c434a;}
+            .ide-snippets-admin .ide-badge-custom{background:#e5f1fb;color:#135e96;}
+            .ide-snippets-admin .ide-badge-write{background:#fcefd9;color:#8a4b00;}
+                        .ide-snippets-admin .ide-mcp-params{display:flex;flex-wrap:wrap;gap:4px;}
+            .ide-snippets-admin .ide-mcp-param{font-size:11px;padding:1px 6px;border-radius:4px;background:#f6f7f7;border:1px solid #dcdcde;cursor:help;}
+            .ide-snippets-admin .ide-mcp-param.is-required{border-color:#2271b1;color:#135e96;}
+            .ide-snippets-admin .ide-mcp-schema{margin-top:6px;white-space:normal;}
+            .ide-snippets-admin .ide-mcp-schema summary{cursor:pointer;color:#2271b1;font-size:12px;}
+            .ide-snippets-admin .ide-mcp-schema .ide-mcp-code{min-width:260px;margin-top:6px;}
+            .ide-snippets-admin .ide-mcp-code{display:block;white-space:pre-wrap;word-break:break-word;background:#f6f7f7;border:1px solid #dcdcde;border-radius:8px;padding:10px;max-height:320px;overflow:auto;font-size:12px;line-height:1.45;margin:0;}
+            .ide-snippets-admin details.ide-snippets-panel > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;}
+            .ide-snippets-admin details.ide-snippets-panel > summary::-webkit-details-marker{display:none;}
+            .ide-snippets-admin details.ide-snippets-panel > summary:before{content:"\25B8";color:#646970;transition:transform .15s ease;}
+            .ide-snippets-admin details.ide-snippets-panel[open] > summary:before{transform:rotate(90deg);}
+            .ide-snippets-admin details.ide-snippets-panel > summary h2{margin:0;}
+            .ide-snippets-admin details.ide-snippets-panel[open] > summary{margin-bottom:14px;}
+            .ide-snippets-admin .ide-mcp-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;}
+            .ide-snippets-admin .ide-mcp-form-grid .ide-field-full{grid-column:1 / -1;}
+            .ide-snippets-admin .ide-field .description{display:block;margin-top:4px;}
+            .ide-snippets-admin .ide-mcp-label{display:block;font-weight:600;margin:0 0 4px;}
+            .ide-snippets-admin .ide-field .ide-mcp-check{font-weight:400;display:flex;align-items:center;gap:6px;min-height:30px;}
+            .ide-snippets-admin .ide-field textarea.code{font-family:Menlo,Consolas,monospace;font-size:12px;}
+            .ide-snippets-admin .ide-field .description.is-error{color:#b32d2e;}
+            .ide-snippets-admin .ide-field .description.is-ok{color:#007017;}
+            .ide-snippets-admin .ide-mcp-tester-info{margin:-4px 0 12px;display:grid;gap:6px;}
+            .ide-snippets-admin .ide-mcp-tester-info:empty{display:none;}
+            .ide-snippets-admin .ide-mcp-tester-info .ide-mcp-desc{color:#50575e;}
+            .ide-snippets-admin .ide-mcp-result{margin-top:16px;padding-top:14px;border-top:1px solid #dcdcde;}
+            .ide-snippets-admin .ide-mcp-result-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;}
+            .ide-snippets-admin .ide-mcp-result-header .button{margin-left:auto;}
+            .ide-snippets-admin .ide-mcp-result.is-error .ide-mcp-code{border-color:#f0b8b8;background:#fcf0f1;}
+            .ide-snippets-admin .ide-mcp-result-body{max-height:420px;}
+            .ide-snippets-admin .ide-mcp-endpoints{margin:0 0 14px;}
+            .ide-snippets-admin .ide-mcp-endpoints th{width:160px;font-weight:600;}
+            .ide-snippets-admin .ide-mcp-endpoints code{word-break:break-all;}
+            .ide-snippets-admin .ide-snippets-toolbar input[type="search"]{width:280px;}
+            @media (max-width: 1280px){
+                .ide-snippets-admin .ide-mcp-layout{grid-template-columns:1fr;}
+                .ide-snippets-admin .ide-mcp-aside{position:static;}
+            }
+            @media (max-width: 782px){
+                .ide-snippets-admin .ide-mcp-form-grid{grid-template-columns:1fr;}
+                .ide-snippets-admin .ide-mcp-table thead{display:none;}
+                .ide-snippets-admin .ide-mcp-table td{display:block;}
+                .ide-snippets-admin .ide-mcp-col-actions{width:auto;white-space:normal;}
+            }
+        ');
+
+        if (strpos((string) $hook_suffix, 'eliodata-snippet-hub-mcp') !== false) {
+            wp_add_inline_script('code-editor', 'window.ideMcpI18n = ' . wp_json_encode([
+                'jsonOk' => __('JSON valide.', 'eliodata-snippet-hub'),
+                'jsonError' => __('JSON invalide : ', 'eliodata-snippet-hub'),
+                'jsonEmpty' => __('Laisser vide pour un outil sans paramètre.', 'eliodata-snippet-hub'),
+                'copied' => __('Copié', 'eliodata-snippet-hub'),
+                'none' => __('Aucun paramètre.', 'eliodata-snippet-hub'),
+                'passAsLocked' => __('GET et DELETE passent toujours leurs arguments dans l’URL.', 'eliodata-snippet-hub'),
+                'passAsFree' => __('POST, PUT et PATCH peuvent envoyer un corps JSON.', 'eliodata-snippet-hub'),
+                'readonlyOk' => __('Visible en profil lecture.', 'eliodata-snippet-hub'),
+                'readonlyNotGet' => __('Lecture seule mais pas en GET : seul le profil écriture le verra.', 'eliodata-snippet-hub'),
+                'readonlyOff' => __('Seul le profil écriture le verra.', 'eliodata-snippet-hub'),
+            ]) . ';', 'before');
+            wp_add_inline_script('code-editor', <<<'JS'
+(function () {
+    var i18n = window.ideMcpI18n || {};
+    function esc(value) {
+        return String(value).replace(/[&<>"]/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
+        });
+    }
+    function checkJson(field, status, emptyText) {
+        if (!field || !status) { return; }
+        var value = field.value.trim();
+        status.classList.remove('is-error', 'is-ok');
+        if (value === '') { status.textContent = emptyText || ''; return; }
+        try {
+            var parsed = JSON.parse(value);
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) { throw new Error('objet attendu'); }
+            status.textContent = i18n.jsonOk;
+            status.classList.add('is-ok');
+        } catch (error) {
+            status.textContent = i18n.jsonError + error.message;
+            status.classList.add('is-error');
+        }
+    }
+    function sampleValue(definition) {
+        definition = definition || {};
+        if (Object.prototype.hasOwnProperty.call(definition, 'default')) { return definition['default']; }
+        if (Array.isArray(definition['enum']) && definition['enum'].length) { return definition['enum'][0]; }
+        var type = Array.isArray(definition.type) ? definition.type[0] : definition.type;
+        if (type === 'integer' || type === 'number') { return typeof definition.minimum === 'number' ? definition.minimum : 0; }
+        if (type === 'boolean') { return false; }
+        if (type === 'array') { return []; }
+        if (type === 'object') { return {}; }
+        return '';
+    }
+    function templateFor(tool) {
+        var schema = (tool && tool.schema) || {};
+        var properties = schema.properties || {};
+        var template = {};
+        (schema.required || []).forEach(function (name) { template[name] = sampleValue(properties[name]); });
+        return JSON.stringify(template, null, 2);
+    }
+    function paramsHtml(parameters) {
+        if (!parameters || !parameters.length) { return '<span class="ide-mcp-muted">' + esc(i18n.none) + '</span>'; }
+        return '<span class="ide-mcp-params">' + parameters.map(function (p) {
+            var title = p.type + (p['enum'] && p['enum'].length ? ' : ' + p['enum'].join(', ') : '');
+            return '<code class="ide-mcp-param' + (p.required ? ' is-required' : '') + '" title="' + esc(title) + '">' + esc(p.name) + (p.required ? '<span aria-hidden="true">*</span>' : '') + '</code>';
+        }).join('') + '</span>';
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var table = document.getElementById('ide-mcp-table');
+        var search = document.getElementById('ide-mcp-search');
+        if (search && table) {
+            search.addEventListener('input', function () {
+                var needle = search.value.trim().toLowerCase();
+                table.querySelectorAll('tr[data-mcp-row]').forEach(function (row) {
+                    row.style.display = !needle || row.textContent.toLowerCase().indexOf(needle) !== -1 ? '' : 'none';
+                });
+            });
+        }
+
+        var tester = document.querySelector('[data-mcp-tester]');
+        if (tester) {
+            var tools = {};
+            try { tools = JSON.parse(tester.getAttribute('data-mcp-tools') || '{}'); } catch (e) { tools = {}; }
+            var select = tester.querySelector('#mcp-test-tool');
+            var args = tester.querySelector('#mcp-test-arguments');
+            var info = tester.querySelector('[data-mcp-tester-info]');
+            var lastTemplate = args ? args.value.trim() : '';
+            var markRow = function (name) {
+                if (!table) { return; }
+                table.querySelectorAll('tr[data-mcp-row]').forEach(function (row) {
+                    var button = row.querySelector('[data-mcp-test]');
+                    row.classList.toggle('is-selected', !!button && button.getAttribute('data-mcp-test') === name);
+                });
+            };
+            var refresh = function () {
+                var tool = tools[select.value] || null;
+                if (info) {
+                    info.innerHTML = tool ? (tool.description ? '<p class="ide-mcp-desc">' + esc(tool.description) + '</p>' : '') + paramsHtml(tool.parameters) : '';
+                }
+                // Only replace arguments the user has not edited
+                var current = args.value.trim();
+                if (current === '' || current === '{}' || current === lastTemplate) {
+                    lastTemplate = templateFor(tool);
+                    args.value = lastTemplate;
+                }
+                markRow(select.value);
+            };
+            select.addEventListener('change', refresh);
+            tester.addEventListener('submit', function (event) {
+                var tool = tools[select.value];
+                if (tool && !tool.read && !window.confirm(tester.getAttribute('data-mcp-confirm'))) {
+                    event.preventDefault();
+                }
+            });
+            document.querySelectorAll('[data-mcp-test]').forEach(function (link) {
+                link.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    select.value = link.getAttribute('data-mcp-test');
+                    refresh();
+                    document.getElementById('mcp-tester').scrollIntoView({behavior: 'smooth', block: 'start'});
+                    args.focus({preventScroll: true});
+                });
+            });
+            if (args.value.trim() === '{}') { refresh(); } else { markRow(select.value); }
+        }
+
+        document.querySelectorAll('[data-mcp-copy]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var target = document.querySelector(button.getAttribute('data-mcp-copy'));
+                if (!target || !navigator.clipboard) { return; }
+                navigator.clipboard.writeText(target.textContent).then(function () {
+                    var label = button.textContent;
+                    button.textContent = i18n.copied;
+                    setTimeout(function () { button.textContent = label; }, 1500);
+                });
+            });
+        });
+
+        var formPanel = document.getElementById('mcp-tool-form');
+        document.querySelectorAll('[data-mcp-open-form]').forEach(function (link) {
+            link.addEventListener('click', function (event) {
+                if (!formPanel || formPanel.querySelector('input[name="existing_name"]').value !== '') { return; }
+                event.preventDefault();
+                formPanel.open = true;
+                formPanel.scrollIntoView({behavior: 'smooth', block: 'start'});
+                var name = formPanel.querySelector('#mcp-tool-name');
+                if (name) { name.focus({preventScroll: true}); }
+            });
+        });
+
+        var toolForm = document.querySelector('[data-mcp-tool-form]');
+        if (toolForm) {
+            var method = toolForm.querySelector('#mcp-tool-method');
+            var passAs = toolForm.querySelector('#mcp-tool-pass-as');
+            var passAsHint = toolForm.querySelector('[data-mcp-pass-as-hint]');
+            var readOnly = toolForm.querySelector('input[name="read_only_hint"]');
+            var readOnlyHint = toolForm.querySelector('[data-mcp-readonly-hint]');
+            var schema = toolForm.querySelector('#mcp-tool-input-schema');
+            var schemaStatus = toolForm.querySelector('[data-mcp-json-status]');
+            var syncMethod = function () {
+                var locked = method.value === 'GET' || method.value === 'DELETE';
+                if (locked) { passAs.value = 'query'; }
+                // A disabled select is not posted: the server then falls back to query for GET
+                passAs.disabled = locked;
+                passAsHint.textContent = locked ? i18n.passAsLocked : i18n.passAsFree;
+                if (!readOnly.checked) {
+                    readOnlyHint.textContent = i18n.readonlyOff;
+                } else {
+                    readOnlyHint.textContent = method.value === 'GET' ? i18n.readonlyOk : i18n.readonlyNotGet;
+                }
+                readOnlyHint.classList.toggle('is-error', readOnly.checked && method.value !== 'GET');
+            };
+            method.addEventListener('change', syncMethod);
+            readOnly.addEventListener('change', syncMethod);
+            toolForm.addEventListener('submit', function () { passAs.disabled = false; });
+            syncMethod();
+            schema.addEventListener('input', function () { checkJson(schema, schemaStatus, i18n.jsonEmpty); });
+            checkJson(schema, schemaStatus, i18n.jsonEmpty);
+        }
+    });
+})();
+JS
+            );
+        }
     }
 
     private function get_native_table_name() {
@@ -719,11 +997,7 @@ class IDE_Snippets_Bridge {
     }
 
     private function clear_snippet_cache($id = 0) {
-        if ($id > 0) {
-            wp_cache_delete('eliodata_snippet_hub_snippet_' . $id, 'eliodata_snippet_hub');
-        }
-        wp_cache_delete('eliodata_snippet_hub_all_snippets', 'eliodata_snippet_hub');
-        wp_cache_delete('eliodata_snippet_hub_active_snippets', 'eliodata_snippet_hub');
+        Eliodata_Snippet_Hub_Security::clear_snippet_cache($id);
     }
 
     private function get_native_snippet($id) {
@@ -759,33 +1033,6 @@ class IDE_Snippets_Bridge {
 
         wp_cache_set('eliodata_snippet_hub_all_snippets', $results, 'eliodata_snippet_hub');
         return $results;
-    }
-
-    private function get_snippet_stats($snippets) {
-        $total = is_array($snippets) ? count($snippets) : 0;
-        $active = 0;
-        if (!empty($snippets)) {
-            foreach ($snippets as $snippet) {
-                if (isset($snippet->active) && (int) $snippet->active === 1) {
-                    $active++;
-                }
-            }
-        }
-        return [
-            'total' => $total,
-            'active' => $active,
-            'inactive' => $total - $active,
-        ];
-    }
-
-    private function render_stats_grid($stats) {
-        ?>
-        <div class="ide-snippets-grid">
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['total']; ?></strong><?php esc_html_e('Total snippets', 'eliodata-snippet-hub'); ?></div>
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['active']; ?></strong><?php esc_html_e('Active', 'eliodata-snippet-hub'); ?></div>
-            <div class="ide-snippets-card"><strong><?php echo (int) $stats['inactive']; ?></strong><?php esc_html_e('Inactive', 'eliodata-snippet-hub'); ?></div>
-        </div>
-        <?php
     }
 
     private function get_active_native_snippets() {
@@ -967,7 +1214,7 @@ class IDE_Snippets_Bridge {
 
     private function get_import_source_plugins() {
         $sources = [
-            'native' => __('Snippet Hub (Eliodata Native)', 'eliodata-snippet-hub'),
+            'native' => __('MCP Bridge (Eliodata Native)', 'eliodata-snippet-hub'),
         ];
         $sources = apply_filters('eliodata_snippet_hub_import_sources', $sources, $this);
         if (!is_array($sources)) {
@@ -982,7 +1229,7 @@ class IDE_Snippets_Bridge {
             $normalized[$source_key] = is_string($label) && $label !== '' ? $label : strtoupper($source_key);
         }
         if (!isset($normalized['native'])) {
-            $normalized['native'] = __('Snippet Hub (Eliodata Native)', 'eliodata-snippet-hub');
+            $normalized['native'] = __('MCP Bridge (Eliodata Native)', 'eliodata-snippet-hub');
         }
         return $normalized;
     }
@@ -1326,50 +1573,197 @@ class IDE_Snippets_Bridge {
     }
 
     private function normalize_runtime_snippet_code($code) {
-        $clean = ltrim((string) $code);
-        if (strpos($clean, "\xEF\xBB\xBF") === 0) {
-            $clean = substr($clean, 3);
-        }
-        $clean = (string) preg_replace('/^\s*<\?(?:php)?\s*/i', '', $clean, 1);
-        $clean = (string) preg_replace('/\?>\s*$/', '', $clean, 1);
-        return trim($clean);
+        return Eliodata_Snippet_Hub_Security::normalize_snippet_code($code);
     }
 
-    private function execute_runtime_snippet_code($code) {
-        $tmp_file = wp_tempnam('ide-snippet-');
-        if (!is_string($tmp_file) || $tmp_file === '') {
-            return;
+    private function execute_runtime_snippet_code($code, $snippet_id) {
+        // Compiled once per code version in a private uploads folder (and cached by OPcache)
+        $file = Eliodata_Snippet_Hub_Security::get_runtime_file($snippet_id, $code);
+        $is_temporary = false;
+
+        if ($file === '') {
+            // Fallback when uploads is not writable: temporary file deleted after use
+            $file = wp_tempnam('ide-snippet-');
+            if (!is_string($file) || $file === '' || file_put_contents($file, "<?php\n" . $code . "\n") === false) {
+                return;
+            }
+            $is_temporary = true;
         }
-        $payload = "<?php\n" . $code . "\n";
-        $bytes = file_put_contents($tmp_file, $payload);
-        if ($bytes === false) {
-            return;
+
+        // PHP reports errors with the resolved path, which differs when uploads is a symlink
+        $this->runtime_snippet_files[$file] = $snippet_id;
+        $real_file = realpath($file);
+        if (is_string($real_file) && $real_file !== $file) {
+            $this->runtime_snippet_files[$real_file] = $snippet_id;
         }
-        include $tmp_file;
-        wp_delete_file($tmp_file);
+        $this->current_snippet_id = $snippet_id;
+        try {
+            include $file;
+        } finally {
+            $this->current_snippet_id = 0;
+            if ($is_temporary) {
+                wp_delete_file($file);
+            }
+        }
     }
 
+    /**
+     * Snippet management screens and routes never run snippets, so a broken
+     * snippet can always be fixed from the admin or from the IDE.
+     */
+    private function is_snippet_management_request() {
+        if (is_admin()) {
+            $page = isset($_REQUEST['page']) ? sanitize_key(wp_unslash($_REQUEST['page'])) : '';
+            return strpos($page, 'eliodata-snippet-hub') === 0;
+        }
+
+        $rest_route = isset($_GET['rest_route']) ? sanitize_text_field(wp_unslash($_GET['rest_route'])) : '';
+        if ($rest_route !== '' && strpos(ltrim($rest_route, '/'), 'ide/v1/') === 0) {
+            return true;
+        }
+
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+        $rest_prefix = '/' . trim(rest_get_url_prefix(), '/') . '/ide/v1/';
+        return $request_uri !== '' && strpos($request_uri, $rest_prefix) !== false;
+    }
+
+    private function deactivate_failed_snippet($snippet_id, $message, $line) {
+        global $wpdb;
+
+        $snippet_id = absint($snippet_id);
+        if ($snippet_id <= 0) {
+            return;
+        }
+
+        $table = $this->get_native_table_name();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->update($table, ['active' => 0], ['id' => $snippet_id], ['%d'], ['%d']);
+        $this->clear_snippet_cache($snippet_id);
+        Eliodata_Snippet_Hub_Security::record_runtime_error($snippet_id, $message, $line, true);
+    }
+
+    /**
+     * Deactivate the snippet responsible for a fatal error, including errors
+     * raised later by callbacks declared in the snippet.
+     */
+    public function handle_runtime_shutdown() {
+        $error = error_get_last();
+        $fatal_types = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR];
+        if (!is_array($error) || !in_array((int) $error['type'], $fatal_types, true)) {
+            return;
+        }
+
+        $file = isset($error['file']) ? (string) $error['file'] : '';
+        $snippet_id = isset($this->runtime_snippet_files[$file]) ? $this->runtime_snippet_files[$file] : $this->current_snippet_id;
+        if ($snippet_id <= 0) {
+            return;
+        }
+
+        $message = $this->hide_runtime_paths((string) $error['message']);
+        $line = isset($error['line']) && $this->is_snippet_file($file, $snippet_id)
+            ? $this->to_snippet_line($snippet_id, (int) $error['line'])
+            : 0;
+        $this->deactivate_failed_snippet($snippet_id, $message, $line);
+    }
+
+    /**
+     * Convert a line of the temporary file into a line of the stored snippet code.
+     */
+    private function to_snippet_line($snippet_id, $file_line) {
+        $offset = isset($this->runtime_line_offsets[$snippet_id]) ? $this->runtime_line_offsets[$snippet_id] : 0;
+        return max(1, (int) $file_line - 1 + $offset);
+    }
+
+    private function get_throwable_snippet_line(Throwable $e, $snippet_id) {
+        return $this->is_snippet_file($e->getFile(), $snippet_id) ? $this->to_snippet_line($snippet_id, $e->getLine()) : 0;
+    }
+
+    private function is_snippet_file($file, $snippet_id) {
+        return isset($this->runtime_snippet_files[$file]) && $this->runtime_snippet_files[$file] === $snippet_id;
+    }
+
+    /**
+     * Replace snippet file paths in an error message, longest first so a path
+     * never leaves a partial prefix behind.
+     */
+    private function hide_runtime_paths($message) {
+        $paths = array_keys($this->runtime_snippet_files);
+        usort($paths, static function ($left, $right) {
+            return strlen($right) - strlen($left);
+        });
+        return str_replace($paths, 'snippet', $message);
+    }
+
+    public function render_runtime_notices() {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
+            return;
+        }
+
+        if (Eliodata_Snippet_Hub_Security::is_safe_mode()) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__('Eliodata MCP Bridge:', 'eliodata-snippet-hub') . '</strong> ';
+            echo esc_html__('Mode sans échec actif (ELIODATA_SNIPPET_HUB_SAFE_MODE) : aucun snippet n’est exécuté.', 'eliodata-snippet-hub');
+            echo '</p></div>';
+        }
+
+        $errors = Eliodata_Snippet_Hub_Security::get_runtime_errors();
+        if (empty($errors)) {
+            return;
+        }
+
+        echo '<div class="notice notice-error"><p><strong>' . esc_html__('Eliodata MCP Bridge : snippets arrêtés après une erreur', 'eliodata-snippet-hub') . '</strong></p><ul>';
+        foreach ($errors as $snippet_id => $error) {
+            $edit_url = add_query_arg(['page' => 'eliodata-snippet-hub-edit', 'snippet_id' => absint($snippet_id)], admin_url('admin.php'));
+            $status = !empty($error['deactivated']) ? __('désactivé', 'eliodata-snippet-hub') : __('toujours actif', 'eliodata-snippet-hub');
+            printf(
+                '<li><a href="%1$s">%2$s</a> (%3$s, %4$s) : %5$s</li>',
+                esc_url($edit_url),
+                esc_html(sprintf(__('Snippet #%d', 'eliodata-snippet-hub'), absint($snippet_id))),
+                esc_html($status),
+                esc_html(isset($error['time']) ? (string) $error['time'] : ''),
+                esc_html(isset($error['message']) ? (string) $error['message'] : '')
+            );
+        }
+        echo '</ul><p>' . esc_html__('Corrigez puis enregistrez le snippet pour effacer ce message.', 'eliodata-snippet-hub') . '</p></div>';
+    }
+
+    /**
+     * Runs on init (priority 1) and on wp (priority 1).
+     *
+     * Snippets targeting all content run on init, so they also work in REST,
+     * cron and AJAX requests and can register hooks such as init or rest_api_init.
+     * Snippets targeting post types or specific posts need the main query:
+     * on the front end they run on wp, once the requested post is known.
+     */
     public function execute_active_snippets() {
-        if ($this->runtime_executed) {
-            return;
-        }
-
         if (defined('WP_CLI') && WP_CLI) {
             return;
         }
 
-        $context = $this->get_current_execution_context();
-        if (empty($context['query_ready'])) {
+        if (Eliodata_Snippet_Hub_Security::is_safe_mode() || $this->is_snippet_management_request()) {
             return;
         }
 
-        $this->runtime_executed = true;
+        $context = $this->get_current_execution_context();
+        $query_ready = !empty($context['query_ready']);
+
+        // Timing before 4.2.0: every front-end snippet waited for the wp hook
+        if (!$query_ready && defined('ELIODATA_SNIPPET_HUB_LEGACY_TIMING') && ELIODATA_SNIPPET_HUB_LEGACY_TIMING) {
+            return;
+        }
+
         $snippets = $this->get_active_native_snippets();
         if (empty($snippets)) {
             return;
         }
 
         foreach ($snippets as $snippet) {
+            $snippet_id = isset($snippet->id) ? absint($snippet->id) : 0;
+            if ($snippet_id <= 0 || isset($this->executed_snippet_ids[$snippet_id])) {
+                continue;
+            }
+            if (!$query_ready && $this->get_snippet_target_mode($snippet) !== 'all') {
+                continue;
+            }
             if (!$this->should_execute_snippet_for_request(isset($snippet->scope) ? $snippet->scope : 'global')) {
                 continue;
             }
@@ -1382,10 +1776,20 @@ class IDE_Snippets_Bridge {
                 continue;
             }
 
+            $this->executed_snippet_ids[$snippet_id] = true;
+            $this->runtime_line_offsets[$snippet_id] = Eliodata_Snippet_Hub_Security::get_code_line_offset($snippet->code);
+            if (!$this->shutdown_handler_registered) {
+                register_shutdown_function([$this, 'handle_runtime_shutdown']);
+                $this->shutdown_handler_registered = true;
+            }
+
             try {
-                $this->execute_runtime_snippet_code($code);
+                $this->execute_runtime_snippet_code($code, $snippet_id);
+            } catch (Error $e) {
+                // Engine errors (parse errors, undefined functions...) stop the snippet for good
+                $this->deactivate_failed_snippet($snippet_id, $e->getMessage(), $this->get_throwable_snippet_line($e, $snippet_id));
             } catch (Throwable $e) {
-                // Silently fail in production or use proper logging if enabled
+                Eliodata_Snippet_Hub_Security::record_runtime_error($snippet_id, $e->getMessage(), $this->get_throwable_snippet_line($e, $snippet_id), false);
             }
         }
     }
@@ -1397,11 +1801,96 @@ class IDE_Snippets_Bridge {
         ], 60);
     }
 
-    private function redirect_admin_page($page_slug = 'eliodata-snippet-hub', $args = []) {
+    private function redirect_admin_page($page_slug = 'eliodata-snippet-hub', $args = [], $fragment = '') {
         $query = array_merge(['page' => $page_slug], is_array($args) ? $args : []);
         $url = add_query_arg($query, admin_url('admin.php'));
+        if ($fragment !== '') {
+            $url .= '#' . $fragment;
+        }
         wp_safe_redirect($url);
         exit;
+    }
+
+    private function set_admin_payload($key, $payload) {
+        set_transient('ide_snippets_admin_payload_' . sanitize_key($key) . '_' . get_current_user_id(), $payload, 120);
+    }
+
+    private function consume_admin_payload($key) {
+        $transient_key = 'ide_snippets_admin_payload_' . sanitize_key($key) . '_' . get_current_user_id();
+        $payload = get_transient($transient_key);
+        if ($payload !== false) {
+            delete_transient($transient_key);
+        }
+        return $payload;
+    }
+
+    private function get_mcp_admin_server() {
+        return new Eliodata_Snippet_Hub_MCP();
+    }
+
+    private function get_mcp_admin_endpoint($path = '') {
+        $base = trailingslashit(rest_url('eliodata-snippet-hub/v1'));
+        $path = ltrim((string) $path, '/');
+        return $path === '' ? $base : $base . $path;
+    }
+
+    private function normalize_rest_admin_response($response) {
+        if (is_wp_error($response)) {
+            return [
+                'ok' => false,
+                'status' => (int) ($response->get_error_data()['status'] ?? 500),
+                'message' => $response->get_error_message(),
+                'data' => $response->get_error_data(),
+            ];
+        }
+
+        if ($response instanceof WP_REST_Response) {
+            return [
+                'ok' => !$response->is_error(),
+                'status' => (int) $response->get_status(),
+                'message' => '',
+                'data' => $response->get_data(),
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'status' => 500,
+            'message' => __('Réponse REST inattendue.', 'eliodata-snippet-hub'),
+            'data' => [],
+        ];
+    }
+
+    private function get_mcp_tools_payload($profile) {
+        $request = new WP_REST_Request('GET');
+        $request->set_param('profile', $profile);
+        return $this->normalize_rest_admin_response($this->get_mcp_admin_server()->get_tools($request));
+    }
+
+    private function get_mcp_custom_tools_payload() {
+        $request = new WP_REST_Request('GET');
+        return $this->normalize_rest_admin_response($this->get_mcp_admin_server()->get_custom_tools($request));
+    }
+
+    private function decode_admin_json_object($raw_value, $default = [], &$error_message = '') {
+        $error_message = '';
+        $raw_value = is_string($raw_value) ? trim($raw_value) : '';
+        if ($raw_value === '') {
+            return $default;
+        }
+
+        $decoded = json_decode($raw_value, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            $error_message = __('Le JSON fourni est invalide.', 'eliodata-snippet-hub');
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    private function format_admin_json($value) {
+        $encoded = wp_json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return is_string($encoded) ? $encoded : '{}';
     }
 
     private function get_premium_feature_map() {
@@ -1443,7 +1932,7 @@ class IDE_Snippets_Bridge {
     }
 
     public function register_post_snippets_metabox() {
-        if (!current_user_can('manage_options')) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
         if (!$this->is_feature_enabled('content_targeting')) {
@@ -1454,7 +1943,7 @@ class IDE_Snippets_Bridge {
         foreach ($post_types as $post_type => $type_object) {
             add_meta_box(
                 'ide_snippets_assignments',
-                esc_html__('Eliodata Snippet Hub', 'eliodata-snippet-hub'),
+                esc_html__('Eliodata MCP Bridge', 'eliodata-snippet-hub'),
                 [$this, 'render_post_snippets_metabox'],
                 $post_type,
                 'side',
@@ -1507,7 +1996,7 @@ class IDE_Snippets_Bridge {
         $active = isset($stats['active']) ? (int) $stats['active'] : 0;
         $inactive = isset($stats['inactive']) ? (int) $stats['inactive'] : 0;
         echo '<div class="ide-snippets-grid">';
-        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $total) . '</strong>' . esc_html__('Total snippets', 'eliodata-snippet-hub') . '</div>';
+        echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $total) . '</strong>' . esc_html__('Snippets au total', 'eliodata-snippet-hub') . '</div>';
         echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $active) . '</strong>' . esc_html__('Actifs', 'eliodata-snippet-hub') . '</div>';
         echo '<div class="ide-snippets-card"><strong>' . esc_html((string) $inactive) . '</strong>' . esc_html__('Inactifs', 'eliodata-snippet-hub') . '</div>';
         echo '</div>';
@@ -1551,7 +2040,7 @@ class IDE_Snippets_Bridge {
         if (!$post || !isset($post->post_type)) {
             return;
         }
-        if (!current_user_can('manage_options') || !current_user_can('edit_post', $post_id)) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage() || !current_user_can('edit_post', $post_id)) {
             return;
         }
         if (!isset($_POST['ide_snippets_post_assignments_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['ide_snippets_post_assignments_nonce'])), 'ide_snippets_post_assignments')) {
@@ -1587,12 +2076,12 @@ class IDE_Snippets_Bridge {
     }
 
     public function handle_admin_requests() {
-        if (!is_admin() || !current_user_can('manage_options')) {
+        if (!is_admin() || !Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
 
         $page = isset($_REQUEST['page']) ? sanitize_text_field(wp_unslash($_REQUEST['page'])) : '';
-        if (!in_array($page, ['eliodata-snippet-hub', 'eliodata-snippet-hub-new', 'eliodata-snippet-hub-edit', 'eliodata-snippet-hub-assignments', 'eliodata-snippet-hub-import-export'], true)) {
+        if (!in_array($page, ['eliodata-snippet-hub', 'eliodata-snippet-hub-new', 'eliodata-snippet-hub-edit', 'eliodata-snippet-hub-assignments', 'eliodata-snippet-hub-import-export', 'eliodata-snippet-hub-mcp'], true)) {
             return;
         }
 
@@ -1610,6 +2099,113 @@ class IDE_Snippets_Bridge {
 
         global $wpdb;
         $table = $this->get_native_table_name();
+
+        if ($op === 'mcp_save_custom_tool') {
+            $existing_name = isset($_POST['existing_name']) ? sanitize_text_field(wp_unslash($_POST['existing_name'])) : '';
+            $raw_schema = isset($_POST['input_schema']) ? wp_unslash($_POST['input_schema']) : '';
+            $payload = [
+                'name' => $existing_name !== '' ? $existing_name : (isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : ''),
+                'description' => isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '',
+                'method' => isset($_POST['method']) ? sanitize_text_field(wp_unslash($_POST['method'])) : 'GET',
+                'route' => isset($_POST['route']) ? sanitize_text_field(wp_unslash($_POST['route'])) : '',
+                'passAs' => isset($_POST['pass_as']) ? sanitize_text_field(wp_unslash($_POST['pass_as'])) : 'query',
+                'readOnlyHint' => !empty($_POST['read_only_hint']),
+            ];
+            // On failure the form comes back filled with what was typed
+            $keep_draft = function ($message) use ($payload, $existing_name, $raw_schema) {
+                $this->add_admin_notice('error', $message);
+                $this->set_admin_payload('mcp_tool_draft', array_merge($payload, [
+                    'existing_name' => $existing_name,
+                    'inputSchema' => is_string($raw_schema) ? $raw_schema : '',
+                ]));
+                $this->redirect_admin_page('eliodata-snippet-hub-mcp', [], 'mcp-tool-form');
+            };
+
+            $input_schema_error = '';
+            $input_schema = $this->decode_admin_json_object($raw_schema, [], $input_schema_error);
+            if ($input_schema === null) {
+                $keep_draft(__('Schéma d’entrée : ', 'eliodata-snippet-hub') . $input_schema_error);
+            }
+            $payload['inputSchema'] = $input_schema;
+
+            $request = new WP_REST_Request($existing_name !== '' ? 'PUT' : 'POST');
+            if ($existing_name !== '') {
+                $request->set_url_params(['name' => $existing_name]);
+            }
+            $request->set_header('content-type', 'application/json');
+            $request->set_body(wp_json_encode($payload));
+            $server = $this->get_mcp_admin_server();
+            $response = $existing_name !== ''
+                ? $server->update_custom_tool($request)
+                : $server->create_custom_tool($request);
+            $result = $this->normalize_rest_admin_response($response);
+
+            if (!$result['ok']) {
+                $keep_draft($result['message']);
+            }
+
+            $tool_name = isset($result['data']['tool']['name']) ? sanitize_text_field((string) $result['data']['tool']['name']) : $payload['name'];
+            $this->add_admin_notice('success', $existing_name !== ''
+                ? sprintf(__('Outil %s enregistré.', 'eliodata-snippet-hub'), $tool_name)
+                : sprintf(__('Outil %s créé. Il est présélectionné dans le testeur.', 'eliodata-snippet-hub'), $tool_name));
+            $this->redirect_admin_page('eliodata-snippet-hub-mcp', ['tool_name' => $tool_name], 'mcp-tester');
+        }
+
+        if ($op === 'mcp_delete_custom_tool') {
+            $tool_name = isset($_POST['tool_name']) ? sanitize_text_field(wp_unslash($_POST['tool_name'])) : '';
+            $request = new WP_REST_Request('DELETE');
+            $request->set_url_params(['name' => $tool_name]);
+            $result = $this->normalize_rest_admin_response($this->get_mcp_admin_server()->delete_custom_tool($request));
+            if (!$result['ok']) {
+                $this->add_admin_notice('error', $result['message']);
+            } else {
+                $this->add_admin_notice('success', sprintf(__('Outil %s supprimé.', 'eliodata-snippet-hub'), $tool_name));
+            }
+            $this->redirect_admin_page('eliodata-snippet-hub-mcp');
+        }
+
+        if ($op === 'mcp_test_tool') {
+            $tool_name = isset($_POST['tool_name']) ? sanitize_text_field(wp_unslash($_POST['tool_name'])) : '';
+            $raw_arguments = isset($_POST['arguments']) ? wp_unslash($_POST['arguments']) : '';
+            $arguments_error = '';
+            $arguments = $this->decode_admin_json_object($raw_arguments, [], $arguments_error);
+
+            if ($arguments === null) {
+                $this->add_admin_notice('error', __('Arguments : ', 'eliodata-snippet-hub') . $arguments_error);
+                $this->redirect_admin_page('eliodata-snippet-hub-mcp', ['tool_name' => $tool_name], 'mcp-tester');
+            }
+
+            // The profile follows the tool: read when the read profile exposes it, write otherwise
+            $profile = 'write';
+            $read_payload = $this->get_mcp_tools_payload('read');
+            if ($read_payload['ok'] && !empty($read_payload['data']['tools']) && is_array($read_payload['data']['tools'])) {
+                foreach ($read_payload['data']['tools'] as $tool) {
+                    if (isset($tool['name']) && $tool['name'] === $tool_name) {
+                        $profile = 'read';
+                        break;
+                    }
+                }
+            }
+
+            $request = new WP_REST_Request('POST');
+            $request->set_param('profile', $profile);
+            $request->set_header('content-type', 'application/json');
+            $request->set_body(wp_json_encode([
+                'name' => $tool_name,
+                'arguments' => $arguments,
+            ]));
+            $started_at = microtime(true);
+            $result = $this->normalize_rest_admin_response($this->get_mcp_admin_server()->call_tool($request));
+            $this->set_admin_payload('mcp_test_result', [
+                'tool_name' => $tool_name,
+                'profile' => $profile,
+                'result' => $result,
+                'arguments' => $arguments,
+                'duration_ms' => (int) round((microtime(true) - $started_at) * 1000),
+            ]);
+
+            $this->redirect_admin_page('eliodata-snippet-hub-mcp', ['tool_name' => $tool_name], 'mcp-result');
+        }
 
         if ($op === 'save_snippet') {
             $id = isset($_POST['snippet_id']) ? absint($_POST['snippet_id']) : 0;
@@ -1646,6 +2242,12 @@ class IDE_Snippets_Bridge {
                 $this->redirect_admin_page($id > 0 ? 'eliodata-snippet-hub-edit' : 'eliodata-snippet-hub-new', $id > 0 ? ['snippet_id' => $id] : []);
             }
 
+            // A snippet with a syntax error is kept (so no work is lost) but never activated
+            $syntax_check = Eliodata_Snippet_Hub_Security::validate_php_code($code);
+            if (is_wp_error($syntax_check)) {
+                $active = 0;
+            }
+
             $data = [
                 'name' => $name,
                 'description' => $description,
@@ -1665,8 +2267,13 @@ class IDE_Snippets_Bridge {
                 $result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s'], ['%d']);
                 if ($result === false) {
                     $this->add_admin_notice('error', 'Erreur lors de la mise à jour du snippet.');
+                } elseif (is_wp_error($syntax_check)) {
+                    $this->clear_snippet_cache($id);
+                    Eliodata_Snippet_Hub_Security::clear_runtime_error($id);
+                    $this->add_admin_notice('error', __('Snippet enregistré mais désactivé.', 'eliodata-snippet-hub') . ' ' . $syntax_check->get_error_message());
                 } else {
                     $this->clear_snippet_cache($id);
+                    Eliodata_Snippet_Hub_Security::clear_runtime_error($id);
                     $this->add_admin_notice('success', 'Snippet mis à jour.');
                 }
                 $this->redirect_admin_page('eliodata-snippet-hub-edit', ['snippet_id' => $id]);
@@ -1680,7 +2287,11 @@ class IDE_Snippets_Bridge {
                 } else {
                     $new_id = (int) $wpdb->insert_id;
                     $this->clear_snippet_cache($new_id);
-                    $this->add_admin_notice('success', 'Snippet créé.');
+                    if (is_wp_error($syntax_check)) {
+                        $this->add_admin_notice('error', __('Snippet enregistré mais désactivé.', 'eliodata-snippet-hub') . ' ' . $syntax_check->get_error_message());
+                    } else {
+                        $this->add_admin_notice('success', 'Snippet créé.');
+                    }
                     if ($new_id > 0) {
                         $this->redirect_admin_page('eliodata-snippet-hub-edit', ['snippet_id' => $new_id]);
                     }
@@ -1698,6 +2309,8 @@ class IDE_Snippets_Bridge {
                     $this->add_admin_notice('error', 'Erreur lors de la suppression.');
                 } else {
                     $this->clear_snippet_cache($id);
+                    Eliodata_Snippet_Hub_Security::clear_runtime_error($id);
+                    Eliodata_Snippet_Hub_Security::delete_runtime_files($id);
                     $this->add_admin_notice('success', 'Snippet supprimé.');
                 }
             }
@@ -1714,6 +2327,9 @@ class IDE_Snippets_Bridge {
                     $this->add_admin_notice('error', 'Erreur lors du changement d’état.');
                 } else {
                     $this->clear_snippet_cache($id);
+                    if ($target) {
+                        Eliodata_Snippet_Hub_Security::clear_runtime_error($id);
+                    }
                     $this->add_admin_notice('success', $target ? 'Snippet activé.' : 'Snippet désactivé.');
                 }
             }
@@ -1875,6 +2491,7 @@ class IDE_Snippets_Bridge {
             $updated = 0;
             $skipped = 0;
             $errors = 0;
+            $invalid_syntax = 0;
 
             foreach ($items as $item) {
                 $entry_source_plugin = $source_plugin;
@@ -1902,10 +2519,14 @@ class IDE_Snippets_Bridge {
                 $scope = $normalized['scope'];
                 $priority = $normalized['priority'];
                 $active = $this->apply_import_activation_mode($normalized['active'], $import_activation_mode);
+                if ($active && is_wp_error(Eliodata_Snippet_Hub_Security::validate_php_code($code))) {
+                    $active = 0;
+                    $invalid_syntax++;
+                }
                 $target_mode = $normalized['target_mode'];
                 $target_post_types = $normalized['target_post_types'];
                 $target_post_ids = $normalized['target_post_ids'];
-                $created = $normalized['created'] !== '' ? $normalized['created'] : current_time('mysql');
+                $created_at = $normalized['created'] !== '' ? $normalized['created'] : current_time('mysql');
                 $modified = $normalized['modified'] !== '' ? $normalized['modified'] : current_time('mysql');
                 $imported_id = $normalized['id'];
 
@@ -1961,7 +2582,7 @@ class IDE_Snippets_Bridge {
                         'target_mode' => $target_mode,
                         'target_post_types' => $target_post_types,
                         'target_post_ids' => $target_post_ids,
-                        'created' => $created,
+                        'created' => $created_at,
                         'modified' => $modified,
                     ];
                     $insert_format = ['%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s'];
@@ -1988,6 +2609,13 @@ class IDE_Snippets_Bridge {
                 . ', ' . __('Mis à jour:', 'eliodata-snippet-hub') . ' ' . (int) $updated
                 . ', ' . __('Ignorés:', 'eliodata-snippet-hub') . ' ' . (int) $skipped
                 . ', ' . __('Erreurs:', 'eliodata-snippet-hub') . ' ' . (int) $errors . '.';
+            if ($invalid_syntax > 0) {
+                $message .= ' ' . sprintf(
+                    /* translators: %d: number of snippets */
+                    __('%d snippet(s) with a PHP syntax error were imported deactivated.', 'eliodata-snippet-hub'),
+                    $invalid_syntax
+                );
+            }
             
             if ($created > 0 || $updated > 0) {
                 $this->clear_snippet_cache(0);
@@ -2014,6 +2642,9 @@ class IDE_Snippets_Bridge {
                     $result = $wpdb->delete($table, ['id' => (int) $snippet_id], ['%d']);
                     if ($result !== false) {
                         $deleted += (int) $result;
+                        $this->clear_snippet_cache((int) $snippet_id);
+                        Eliodata_Snippet_Hub_Security::clear_runtime_error((int) $snippet_id);
+                        Eliodata_Snippet_Hub_Security::delete_runtime_files((int) $snippet_id);
                     }
                 }
                 if ($deleted <= 0) {
@@ -2038,6 +2669,10 @@ class IDE_Snippets_Bridge {
                     );
                     if ($result !== false) {
                         $updated += (int) $result;
+                        $this->clear_snippet_cache((int) $snippet_id);
+                        if ($target) {
+                            Eliodata_Snippet_Hub_Security::clear_runtime_error((int) $snippet_id);
+                        }
                     }
                 }
                 if ($updated <= 0) {
@@ -2262,8 +2897,38 @@ class IDE_Snippets_Bridge {
         <?php
     }
 
+    /**
+     * Header and navigation shared by every screen of the plugin, so that
+     * moving between them does not require the WordPress side menu.
+     */
+    private function render_admin_nav($current) {
+        $items = [
+            'eliodata-snippet-hub' => [__('Snippets', 'eliodata-snippet-hub'), 'dashicons-editor-code'],
+            'eliodata-snippet-hub-new' => [__('Nouveau snippet', 'eliodata-snippet-hub'), 'dashicons-plus-alt2'],
+            'eliodata-snippet-hub-assignments' => [__('Attributions', 'eliodata-snippet-hub'), 'dashicons-admin-links'],
+            'eliodata-snippet-hub-import-export' => [__('Import / Export', 'eliodata-snippet-hub'), 'dashicons-migrate'],
+            'eliodata-snippet-hub-mcp' => [__('Outils MCP', 'eliodata-snippet-hub'), 'dashicons-rest-api'],
+        ];
+        ?>
+        <div class="ide-admin-header">
+            <div class="ide-admin-brand">
+                <img src="<?php echo esc_url(ELIODATA_SNIPPET_HUB_PLUGIN_URL . 'assets/logo-eliodata.png'); ?>" alt="" width="28" height="28">
+                <span class="ide-admin-brand-name"><?php esc_html_e('Eliodata MCP Bridge', 'eliodata-snippet-hub'); ?></span>
+                <span class="ide-admin-version">v<?php echo esc_html(ELIODATA_SNIPPET_HUB_VERSION); ?></span>
+            </div>
+            <nav class="ide-admin-nav" aria-label="<?php echo esc_attr__('Navigation du plugin', 'eliodata-snippet-hub'); ?>">
+                <?php foreach ($items as $slug => $item) : ?>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=' . $slug)); ?>" class="<?php echo $slug === $current ? 'is-current' : ''; ?>" <?php echo $slug === $current ? 'aria-current="page"' : ''; ?>>
+                        <span class="dashicons <?php echo esc_attr($item[1]); ?>" aria-hidden="true"></span><?php echo esc_html($item[0]); ?>
+                    </a>
+                <?php endforeach; ?>
+            </nav>
+        </div>
+        <?php
+    }
+
     public function render_admin_page() {
-        if (!current_user_can('manage_options')) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
 
@@ -2276,7 +2941,9 @@ class IDE_Snippets_Bridge {
         $stats = $this->get_snippets_stats($snippets);
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Eliodata Snippet Hub', 'eliodata-snippet-hub'); ?></h1>
+            <?php $this->render_admin_nav('eliodata-snippet-hub'); ?>
+            <h1><?php esc_html_e('Snippets', 'eliodata-snippet-hub'); ?></h1>
+            <hr class="wp-header-end">
             <?php $this->render_stats_cards($stats); ?>
 
             <?php if ($notice && !empty($notice['message'])) : ?>
@@ -2291,8 +2958,6 @@ class IDE_Snippets_Bridge {
                         <h2><?php esc_html_e('Snippets', 'eliodata-snippet-hub'); ?></h2>
                         <div class="ide-snippets-actions">
                             <a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-new')); ?>"><?php esc_html_e('Nouveau snippet', 'eliodata-snippet-hub'); ?></a>
-                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-import-export')); ?>"><?php esc_html_e('Import / Export', 'eliodata-snippet-hub'); ?></a>
-                            <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=eliodata-snippet-hub-assignments')); ?>"><?php esc_html_e('Attributions', 'eliodata-snippet-hub'); ?></a>
                             <input type="search" id="ide-snippets-search" class="regular-text" placeholder="<?php echo esc_attr__('Filtrer par titre, description, tags...', 'eliodata-snippet-hub'); ?>">
                         </div>
                     </div>
@@ -2385,7 +3050,7 @@ class IDE_Snippets_Bridge {
     }
 
     public function render_import_export_page() {
-        if (!current_user_can('manage_options')) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
 
@@ -2397,7 +3062,9 @@ class IDE_Snippets_Bridge {
 
         ?>
         <div class="wrap ide-snippets-admin">
+            <?php $this->render_admin_nav('eliodata-snippet-hub-import-export'); ?>
             <h1><?php esc_html_e('Import / Export', 'eliodata-snippet-hub'); ?></h1>
+            <hr class="wp-header-end">
             <?php $this->render_stats_cards($stats); ?>
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
@@ -2495,7 +3162,7 @@ class IDE_Snippets_Bridge {
     }
 
     public function render_assignments_page() {
-        if (!current_user_can('manage_options')) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
 
@@ -2516,7 +3183,9 @@ class IDE_Snippets_Bridge {
         $stats = $this->get_snippets_stats($snippets);
         ?>
         <div class="wrap ide-snippets-admin">
+            <?php $this->render_admin_nav('eliodata-snippet-hub-assignments'); ?>
             <h1><?php esc_html_e('Attributions des snippets', 'eliodata-snippet-hub'); ?></h1>
+            <hr class="wp-header-end">
             <?php $this->render_stats_cards($stats); ?>
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
@@ -2616,8 +3285,516 @@ class IDE_Snippets_Bridge {
         <?php
     }
 
+    /**
+     * One entry per tool, whatever the profile: the catalog says where each tool is
+     * exposed instead of changing its content when the profile changes.
+     */
+    private function build_mcp_catalog($read_tools, $write_tools, $custom_tools) {
+        $read_names = [];
+        foreach ($read_tools as $tool) {
+            if (!empty($tool['name'])) {
+                $read_names[(string) $tool['name']] = true;
+            }
+        }
+
+        $catalog = [];
+        foreach ($write_tools as $tool) {
+            if (empty($tool['name']) || !empty($tool['route'])) {
+                continue;
+            }
+            $name = (string) $tool['name'];
+            $catalog[$name] = [
+                'tool' => $tool,
+                'origin' => 'native',
+                'read' => isset($read_names[$name]),
+                'write' => true,
+            ];
+        }
+        foreach ($custom_tools as $tool) {
+            if (empty($tool['name'])) {
+                continue;
+            }
+            $name = (string) $tool['name'];
+            $catalog[$name] = [
+                'tool' => $tool,
+                'origin' => 'custom',
+                'read' => isset($read_names[$name]),
+                'write' => true,
+            ];
+        }
+
+        uasort($catalog, static function ($left, $right) {
+            if ($left['origin'] !== $right['origin']) {
+                return $left['origin'] === 'native' ? -1 : 1;
+            }
+            return strcmp((string) $left['tool']['name'], (string) $right['tool']['name']);
+        });
+
+        return $catalog;
+    }
+
+    private function get_mcp_tool_parameters($tool) {
+        $schema = isset($tool['inputSchema']) && is_array($tool['inputSchema']) ? $tool['inputSchema'] : [];
+        $properties = isset($schema['properties']) && is_array($schema['properties']) ? $schema['properties'] : [];
+        $required = isset($schema['required']) && is_array($schema['required']) ? $schema['required'] : [];
+        $parameters = [];
+        foreach ($properties as $name => $definition) {
+            $definition = is_array($definition) ? $definition : [];
+            $parameters[] = [
+                'name' => (string) $name,
+                'type' => isset($definition['type']) ? (is_array($definition['type']) ? implode('|', $definition['type']) : (string) $definition['type']) : 'mixed',
+                'required' => in_array($name, $required, true),
+                'enum' => isset($definition['enum']) && is_array($definition['enum']) ? $definition['enum'] : [],
+            ];
+        }
+        usort($parameters, static function ($left, $right) {
+            if ($left['required'] !== $right['required']) {
+                return $left['required'] ? -1 : 1;
+            }
+            return strcmp($left['name'], $right['name']);
+        });
+        return $parameters;
+    }
+
+    /**
+     * Explains why a custom tool is missing from the read profile, since
+     * that is the usual surprise when a client only sees part of the catalog.
+     */
+    private function get_mcp_tool_warning($entry) {
+        if ($entry['origin'] !== 'custom' || $entry['read']) {
+            return '';
+        }
+        $tool = $entry['tool'];
+        $method = isset($tool['method']) ? strtoupper((string) $tool['method']) : 'GET';
+        if (!empty($tool['readOnlyHint'])) {
+            /* translators: %s: HTTP method */
+            return sprintf(__('Déclaré en lecture seule mais appelé en %s : seul le profil écriture le voit.', 'eliodata-snippet-hub'), $method);
+        }
+        if ($method === 'GET') {
+            return __('Non déclaré en lecture seule : seul le profil écriture le voit.', 'eliodata-snippet-hub');
+        }
+        return '';
+    }
+
+    private function render_mcp_parameters($parameters) {
+        if (empty($parameters)) {
+            echo '<span class="ide-mcp-muted">' . esc_html__('Aucun', 'eliodata-snippet-hub') . '</span>';
+            return;
+        }
+        echo '<span class="ide-mcp-params">';
+        foreach ($parameters as $parameter) {
+            $title = $parameter['type'];
+            if (!empty($parameter['enum'])) {
+                $title .= ' : ' . implode(', ', array_map('strval', $parameter['enum']));
+            }
+            printf(
+                '<code class="ide-mcp-param%1$s" title="%2$s">%3$s%4$s</code>',
+                $parameter['required'] ? ' is-required' : '',
+                esc_attr($title),
+                esc_html($parameter['name']),
+                $parameter['required'] ? '<span aria-hidden="true">*</span>' : ''
+            );
+        }
+        echo '</span>';
+    }
+
+    private function get_mcp_page_url($args = [], $fragment = '') {
+        $url = add_query_arg(array_merge(['page' => 'eliodata-snippet-hub-mcp'], $args), admin_url('admin.php'));
+        return $fragment !== '' ? $url . '#' . $fragment : $url;
+    }
+
+    private function render_mcp_catalog_table($catalog, $selected_tool_name) {
+        ?>
+        <div class="ide-snippets-toolbar">
+            <h2><?php esc_html_e('Catalogue', 'eliodata-snippet-hub'); ?></h2>
+            <div class="ide-snippets-actions">
+                <a class="button button-primary" href="<?php echo esc_url($this->get_mcp_page_url(['new_tool' => 1], 'mcp-tool-form')); ?>" data-mcp-open-form><?php esc_html_e('Nouvel outil personnalisé', 'eliodata-snippet-hub'); ?></a>
+                <input type="search" id="ide-mcp-search" class="regular-text" placeholder="<?php echo esc_attr__('Filtrer par nom, description, paramètre...', 'eliodata-snippet-hub'); ?>">
+            </div>
+        </div>
+        <p class="ide-mcp-muted"><?php esc_html_e('Le profil lecture est celui des clients en consultation (et des mots de passe d’application [readonly]) : il ne voit que les outils qui ne modifient rien. Le profil écriture voit tout.', 'eliodata-snippet-hub'); ?></p>
+        <table class="widefat striped ide-mcp-table" id="ide-mcp-table">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e('Outil', 'eliodata-snippet-hub'); ?></th>
+                    <th class="ide-mcp-col-origin"><?php esc_html_e('Origine', 'eliodata-snippet-hub'); ?></th>
+                    <th class="ide-mcp-col-profiles"><?php esc_html_e('Visible en', 'eliodata-snippet-hub'); ?></th>
+                    <th><?php esc_html_e('Paramètres', 'eliodata-snippet-hub'); ?></th>
+                    <th class="ide-mcp-col-actions"><?php esc_html_e('Actions', 'eliodata-snippet-hub'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($catalog)) : ?>
+                    <tr><td colspan="5"><?php esc_html_e('Aucun outil MCP disponible.', 'eliodata-snippet-hub'); ?></td></tr>
+                <?php else : ?>
+                    <?php foreach ($catalog as $tool_name => $entry) : ?>
+                        <?php
+                        $tool = $entry['tool'];
+                        $is_custom = $entry['origin'] === 'custom';
+                        $warning = $this->get_mcp_tool_warning($entry);
+                        $parameters = $this->get_mcp_tool_parameters($tool);
+                        ?>
+                        <tr data-mcp-row class="<?php echo $selected_tool_name === $tool_name ? 'is-selected' : ''; ?>">
+                            <td class="ide-mcp-col-tool">
+                                <code class="ide-mcp-tool-name"><?php echo esc_html($tool_name); ?></code>
+                                <?php if (!empty($tool['description'])) : ?>
+                                    <div class="ide-mcp-desc"><?php echo esc_html((string) $tool['description']); ?></div>
+                                <?php endif; ?>
+                                <?php if ($is_custom) : ?>
+                                    <div class="ide-mcp-route"><code><?php echo esc_html((isset($tool['method']) ? (string) $tool['method'] : 'GET') . ' ' . (isset($tool['route']) ? (string) $tool['route'] : '')); ?></code></div>
+                                <?php endif; ?>
+                                <?php if ($warning !== '') : ?>
+                                    <div class="ide-mcp-warning"><?php echo esc_html($warning); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <span class="ide-badge <?php echo $is_custom ? 'ide-badge-custom' : 'ide-badge-native'; ?>"><?php echo esc_html($is_custom ? __('Personnalisé', 'eliodata-snippet-hub') : __('Natif', 'eliodata-snippet-hub')); ?></span>
+                            </td>
+                            <td>
+                                <?php if ($entry['read']) : ?>
+                                    <span class="ide-badge ide-badge-active" title="<?php echo esc_attr__('Visible des profils lecture et écriture', 'eliodata-snippet-hub'); ?>"><?php esc_html_e('Lecture et écriture', 'eliodata-snippet-hub'); ?></span>
+                                <?php else : ?>
+                                    <span class="ide-badge ide-badge-write" title="<?php echo esc_attr__('Masqué au profil lecture', 'eliodata-snippet-hub'); ?>"><?php esc_html_e('Écriture seule', 'eliodata-snippet-hub'); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php $this->render_mcp_parameters($parameters); ?>
+                                <details class="ide-mcp-schema">
+                                    <summary><?php esc_html_e('Schéma JSON', 'eliodata-snippet-hub'); ?></summary>
+                                    <pre class="ide-mcp-code"><?php echo esc_html($this->format_admin_json(isset($tool['inputSchema']) ? $tool['inputSchema'] : new stdClass())); ?></pre>
+                                </details>
+                            </td>
+                            <td class="ide-mcp-col-actions">
+                                <div class="ide-snippets-actions">
+                                    <a class="button button-small" href="<?php echo esc_url($this->get_mcp_page_url(['tool_name' => $tool_name], 'mcp-tester')); ?>" data-mcp-test="<?php echo esc_attr($tool_name); ?>"><?php esc_html_e('Tester', 'eliodata-snippet-hub'); ?></a>
+                                    <?php if ($is_custom) : ?>
+                                        <a class="button button-small" href="<?php echo esc_url($this->get_mcp_page_url(['edit_tool' => $tool_name], 'mcp-tool-form')); ?>"><?php esc_html_e('Modifier', 'eliodata-snippet-hub'); ?></a>
+                                        <form method="post" action="<?php echo esc_url($this->get_mcp_page_url()); ?>" onsubmit="return confirm('<?php echo esc_js(__('Supprimer cet outil personnalisé ?', 'eliodata-snippet-hub')); ?>');">
+                                            <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
+                                            <input type="hidden" name="page" value="eliodata-snippet-hub-mcp">
+                                            <input type="hidden" name="op" value="mcp_delete_custom_tool">
+                                            <input type="hidden" name="tool_name" value="<?php echo esc_attr($tool_name); ?>">
+                                            <button type="submit" class="button button-small button-link-delete"><?php esc_html_e('Supprimer', 'eliodata-snippet-hub'); ?></button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    private function render_mcp_custom_tool_form($editing_tool, $existing_name, $open) {
+        $tool_name = isset($editing_tool['name']) ? (string) $editing_tool['name'] : '';
+        $is_editing = $existing_name !== '';
+        $method = isset($editing_tool['method']) ? (string) $editing_tool['method'] : 'GET';
+        $pass_as = isset($editing_tool['passAs']) ? (string) $editing_tool['passAs'] : 'query';
+        $schema = '';
+        if (isset($editing_tool['inputSchema']) && is_string($editing_tool['inputSchema'])) {
+            $schema = $editing_tool['inputSchema'];
+        } elseif (!empty($editing_tool['inputSchema'])) {
+            $schema = $this->format_admin_json($editing_tool['inputSchema']);
+        }
+        ?>
+        <details class="ide-snippets-panel ide-mcp-form-panel" id="mcp-tool-form" <?php echo $open ? 'open' : ''; ?>>
+            <summary><h2><?php echo esc_html($is_editing ? sprintf(__('Modifier l’outil %s', 'eliodata-snippet-hub'), $existing_name) : __('Nouvel outil personnalisé', 'eliodata-snippet-hub')); ?></h2></summary>
+            <p class="ide-mcp-muted"><?php esc_html_e('Un outil personnalisé expose une route REST du site aux clients MCP (le companion IDE, un agent). Il est propre à ce site et stocké dans WordPress.', 'eliodata-snippet-hub'); ?></p>
+            <form method="post" action="<?php echo esc_url($this->get_mcp_page_url()); ?>" data-mcp-tool-form>
+                <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
+                <input type="hidden" name="page" value="eliodata-snippet-hub-mcp">
+                <input type="hidden" name="op" value="mcp_save_custom_tool">
+                <input type="hidden" name="existing_name" value="<?php echo esc_attr($existing_name); ?>">
+                <div class="ide-mcp-form-grid">
+                    <p class="ide-field">
+                        <label for="mcp-tool-name"><?php esc_html_e('Nom', 'eliodata-snippet-hub'); ?></label>
+                        <input id="mcp-tool-name" type="text" name="name" value="<?php echo esc_attr($tool_name); ?>" placeholder="site_tool_name" pattern="[a-z0-9][a-z0-9._\-]{2,127}" title="<?php echo esc_attr__('Minuscules, chiffres, point, tiret et tiret bas ; 3 caractères minimum.', 'eliodata-snippet-hub'); ?>" required <?php echo $is_editing ? 'readonly' : ''; ?>>
+                        <span class="description"><?php echo esc_html($is_editing ? __('Le nom identifie l’outil chez les clients : il ne se change pas.', 'eliodata-snippet-hub') : __('Minuscules, chiffres, « . », « - », « _ ».', 'eliodata-snippet-hub')); ?></span>
+                    </p>
+                    <p class="ide-field">
+                        <label for="mcp-tool-method"><?php esc_html_e('Méthode HTTP', 'eliodata-snippet-hub'); ?></label>
+                        <select id="mcp-tool-method" name="method">
+                            <?php foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $option) : ?>
+                                <option value="<?php echo esc_attr($option); ?>" <?php selected($method, $option); ?>><?php echo esc_html($option); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </p>
+                    <p class="ide-field ide-field-full">
+                        <label for="mcp-tool-description"><?php esc_html_e('Description', 'eliodata-snippet-hub'); ?></label>
+                        <textarea id="mcp-tool-description" name="description" rows="2" required placeholder="<?php echo esc_attr__('Ce que fait l’outil, lu par l’agent pour décider de l’appeler.', 'eliodata-snippet-hub'); ?>"><?php echo esc_textarea(isset($editing_tool['description']) ? (string) $editing_tool['description'] : ''); ?></textarea>
+                    </p>
+                    <p class="ide-field ide-field-full">
+                        <label for="mcp-tool-route"><?php esc_html_e('Route REST', 'eliodata-snippet-hub'); ?></label>
+                        <input id="mcp-tool-route" type="text" name="route" value="<?php echo esc_attr(isset($editing_tool['route']) ? (string) $editing_tool['route'] : ''); ?>" placeholder="/wp-json/namespace/v1/resource" pattern="/wp-json/.+" title="<?php echo esc_attr__('La route doit commencer par /wp-json/.', 'eliodata-snippet-hub'); ?>" required>
+                    </p>
+                    <p class="ide-field">
+                        <label for="mcp-tool-pass-as"><?php esc_html_e('Arguments transmis en', 'eliodata-snippet-hub'); ?></label>
+                        <select id="mcp-tool-pass-as" name="pass_as">
+                            <option value="query" <?php selected($pass_as, 'query'); ?>><?php esc_html_e('paramètres d’URL (query)', 'eliodata-snippet-hub'); ?></option>
+                            <option value="json" <?php selected($pass_as, 'json'); ?>><?php esc_html_e('corps JSON', 'eliodata-snippet-hub'); ?></option>
+                        </select>
+                        <span class="description" data-mcp-pass-as-hint><?php esc_html_e('GET et DELETE passent toujours leurs arguments dans l’URL.', 'eliodata-snippet-hub'); ?></span>
+                    </p>
+                    <p class="ide-field">
+                        <span class="ide-mcp-label"><?php esc_html_e('Accès', 'eliodata-snippet-hub'); ?></span>
+                        <label class="ide-mcp-check"><input type="checkbox" name="read_only_hint" value="1" <?php checked(!empty($editing_tool['readOnlyHint'])); ?>> <?php esc_html_e('Lecture seule (ne modifie rien)', 'eliodata-snippet-hub'); ?></label>
+                        <span class="description" data-mcp-readonly-hint><?php esc_html_e('Exposé au profil lecture seulement s’il est aussi en GET.', 'eliodata-snippet-hub'); ?></span>
+                    </p>
+                    <p class="ide-field ide-field-full">
+                        <label for="mcp-tool-input-schema"><?php esc_html_e('Schéma d’entrée (JSON Schema)', 'eliodata-snippet-hub'); ?></label>
+                        <textarea id="mcp-tool-input-schema" class="code" name="input_schema" rows="8" spellcheck="false" placeholder='{"type":"object","required":["id"],"properties":{"id":{"type":"integer"}}}'><?php echo esc_textarea($schema); ?></textarea>
+                        <span class="description" data-mcp-json-status><?php esc_html_e('Laisser vide pour un outil sans paramètre.', 'eliodata-snippet-hub'); ?></span>
+                    </p>
+                </div>
+                <div class="ide-snippets-actions">
+                    <button type="submit" class="button button-primary"><?php echo esc_html($is_editing ? __('Enregistrer l’outil', 'eliodata-snippet-hub') : __('Créer l’outil', 'eliodata-snippet-hub')); ?></button>
+                    <a class="button" href="<?php echo esc_url($this->get_mcp_page_url()); ?>"><?php esc_html_e('Annuler', 'eliodata-snippet-hub'); ?></a>
+                </div>
+            </form>
+        </details>
+        <?php
+    }
+
+    private function render_mcp_tester_panel($catalog, $selected_tool_name, $test_result) {
+        $arguments = '{}';
+        if (is_array($test_result) && isset($test_result['tool_name']) && $test_result['tool_name'] === $selected_tool_name && isset($test_result['arguments'])) {
+            $arguments = $this->format_admin_json(empty($test_result['arguments']) ? new stdClass() : $test_result['arguments']);
+        }
+        $tester_data = [];
+        foreach ($catalog as $tool_name => $entry) {
+            $tester_data[$tool_name] = [
+                'description' => isset($entry['tool']['description']) ? (string) $entry['tool']['description'] : '',
+                'read' => $entry['read'],
+                'parameters' => $this->get_mcp_tool_parameters($entry['tool']),
+                'schema' => isset($entry['tool']['inputSchema']) ? $entry['tool']['inputSchema'] : [],
+            ];
+        }
+        ?>
+        <div class="ide-snippets-panel" id="mcp-tester">
+            <h2><?php esc_html_e('Tester un outil', 'eliodata-snippet-hub'); ?></h2>
+            <form method="post" action="<?php echo esc_url($this->get_mcp_page_url()); ?>" data-mcp-tester data-mcp-tools="<?php echo esc_attr(wp_json_encode($tester_data)); ?>" data-mcp-confirm="<?php echo esc_attr__('Cet outil peut modifier des données du site. L’exécuter quand même ?', 'eliodata-snippet-hub'); ?>">
+                <?php wp_nonce_field('ide_snippets_admin_action', 'ide_snippets_admin_nonce'); ?>
+                <input type="hidden" name="page" value="eliodata-snippet-hub-mcp">
+                <input type="hidden" name="op" value="mcp_test_tool">
+                <p class="ide-field">
+                    <label for="mcp-test-tool"><?php esc_html_e('Outil', 'eliodata-snippet-hub'); ?></label>
+                    <select id="mcp-test-tool" name="tool_name">
+                        <?php foreach (['native' => __('Natifs', 'eliodata-snippet-hub'), 'custom' => __('Personnalisés', 'eliodata-snippet-hub')] as $origin => $label) : ?>
+                            <optgroup label="<?php echo esc_attr($label); ?>">
+                                <?php foreach ($catalog as $tool_name => $entry) : ?>
+                                    <?php if ($entry['origin'] === $origin) : ?>
+                                        <option value="<?php echo esc_attr($tool_name); ?>" <?php selected($selected_tool_name, $tool_name); ?>><?php echo esc_html($tool_name . ($entry['read'] ? '' : ' ✎')); ?></option>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </optgroup>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="description"><?php esc_html_e('✎ : outil d’écriture, exécuté avec le profil écriture.', 'eliodata-snippet-hub'); ?></span>
+                </p>
+                <div class="ide-mcp-tester-info" data-mcp-tester-info>
+                    <?php if (isset($catalog[$selected_tool_name])) : ?>
+                        <p class="ide-mcp-desc"><?php echo esc_html(isset($catalog[$selected_tool_name]['tool']['description']) ? (string) $catalog[$selected_tool_name]['tool']['description'] : ''); ?></p>
+                        <?php $this->render_mcp_parameters($this->get_mcp_tool_parameters($catalog[$selected_tool_name]['tool'])); ?>
+                    <?php endif; ?>
+                </div>
+                <p class="ide-field">
+                    <label for="mcp-test-arguments"><?php esc_html_e('Arguments (JSON)', 'eliodata-snippet-hub'); ?></label>
+                    <textarea id="mcp-test-arguments" class="code" name="arguments" rows="8" spellcheck="false"><?php echo esc_textarea($arguments); ?></textarea>
+                    <span class="description"><?php esc_html_e('* : paramètre obligatoire. Choisir un outil préremplit ses paramètres obligatoires.', 'eliodata-snippet-hub'); ?></span>
+                </p>
+                <div class="ide-snippets-actions">
+                    <button type="submit" class="button button-primary" <?php disabled(empty($catalog)); ?>><?php esc_html_e('Exécuter', 'eliodata-snippet-hub'); ?></button>
+                </div>
+            </form>
+            <?php $this->render_mcp_test_result_panel($test_result); ?>
+        </div>
+        <?php
+    }
+
+    private function render_mcp_test_result_panel($test_result) {
+        if (!is_array($test_result)) {
+            return;
+        }
+        $result = isset($test_result['result']) && is_array($test_result['result']) ? $test_result['result'] : [];
+        $ok = !empty($result['ok']);
+        $status = isset($result['status']) ? (int) $result['status'] : 0;
+        $body = $ok
+            ? (isset($result['data']) ? $result['data'] : [])
+            : ['message' => isset($result['message']) ? $result['message'] : '', 'details' => isset($result['data']) ? $result['data'] : []];
+        ?>
+        <div class="ide-mcp-result <?php echo $ok ? 'is-ok' : 'is-error'; ?>" id="mcp-result">
+            <div class="ide-mcp-result-header">
+                <strong><?php esc_html_e('Résultat', 'eliodata-snippet-hub'); ?></strong>
+                <code><?php echo esc_html(isset($test_result['tool_name']) ? (string) $test_result['tool_name'] : ''); ?></code>
+                <span class="ide-badge <?php echo $ok ? 'ide-badge-active' : 'ide-badge-inactive'; ?>"><?php echo esc_html(($ok ? __('Succès', 'eliodata-snippet-hub') : __('Erreur', 'eliodata-snippet-hub')) . ($status ? ' · ' . $status : '')); ?></span>
+                <span class="ide-mcp-muted">
+                    <?php
+                    echo esc_html(sprintf(
+                        /* translators: 1: profile, 2: duration in ms */
+                        __('profil %1$s · %2$s ms', 'eliodata-snippet-hub'),
+                        (isset($test_result['profile']) && $test_result['profile'] === 'write') ? __('écriture', 'eliodata-snippet-hub') : __('lecture', 'eliodata-snippet-hub'),
+                        isset($test_result['duration_ms']) ? (string) (int) $test_result['duration_ms'] : '?'
+                    ));
+                    ?>
+                </span>
+                <button type="button" class="button button-small" data-mcp-copy="#mcp-result-body"><?php esc_html_e('Copier', 'eliodata-snippet-hub'); ?></button>
+            </div>
+            <pre class="ide-mcp-code ide-mcp-result-body" id="mcp-result-body"><?php echo esc_html($this->format_admin_json($body)); ?></pre>
+        </div>
+        <?php
+    }
+
+    private function render_mcp_access_panel() {
+        $config = $this->format_admin_json([
+            'baseUrl' => home_url('/'),
+            'namespace' => 'eliodata-snippet-hub/v1',
+            'profile' => 'read',
+            'customTools' => true,
+        ]);
+        ?>
+        <details class="ide-snippets-panel ide-mcp-access">
+            <summary><h2><?php esc_html_e('Connexion d’un client MCP', 'eliodata-snippet-hub'); ?></h2></summary>
+            <p class="ide-mcp-muted"><?php esc_html_e('Authentification : URL du site, identifiant WordPress et mot de passe d’application. Mettre [readonly] dans le nom du mot de passe le limite aux outils de lecture, quel que soit le profil demandé.', 'eliodata-snippet-hub'); ?></p>
+            <table class="widefat ide-mcp-endpoints">
+                <tbody>
+                    <tr><th><?php esc_html_e('Catalogue', 'eliodata-snippet-hub'); ?></th><td><code>GET <?php echo esc_html($this->get_mcp_admin_endpoint('mcp/tools')); ?>?profile=read|write</code></td></tr>
+                    <tr><th><?php esc_html_e('Exécution', 'eliodata-snippet-hub'); ?></th><td><code>POST <?php echo esc_html($this->get_mcp_admin_endpoint('mcp/call')); ?></code></td></tr>
+                    <tr><th><?php esc_html_e('Outils personnalisés', 'eliodata-snippet-hub'); ?></th><td><code><?php echo esc_html($this->get_mcp_admin_endpoint('mcp/custom-tools')); ?></code></td></tr>
+                </tbody>
+            </table>
+            <div class="ide-mcp-result-header">
+                <strong><?php esc_html_e('Configuration', 'eliodata-snippet-hub'); ?></strong>
+                <button type="button" class="button button-small" data-mcp-copy="#mcp-access-config"><?php esc_html_e('Copier', 'eliodata-snippet-hub'); ?></button>
+            </div>
+            <pre class="ide-mcp-code" id="mcp-access-config"><?php echo esc_html($config); ?></pre>
+        </details>
+        <?php
+    }
+
+    public function render_mcp_page() {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
+            return;
+        }
+
+        $notice = get_transient('ide_snippets_admin_notice_' . get_current_user_id());
+        if ($notice) {
+            delete_transient('ide_snippets_admin_notice_' . get_current_user_id());
+        }
+
+        $selected_tool_name = isset($_GET['tool_name']) ? sanitize_text_field(wp_unslash($_GET['tool_name'])) : '';
+        $edit_tool_name = isset($_GET['edit_tool']) ? sanitize_text_field(wp_unslash($_GET['edit_tool'])) : '';
+        $form_requested = !empty($_GET['new_tool']) || $edit_tool_name !== '';
+
+        $read_payload = $this->get_mcp_tools_payload('read');
+        $write_payload = $this->get_mcp_tools_payload('write');
+        $custom_payload = $this->get_mcp_custom_tools_payload();
+
+        $read_tools = $read_payload['ok'] && !empty($read_payload['data']['tools']) && is_array($read_payload['data']['tools']) ? $read_payload['data']['tools'] : [];
+        $write_tools = $write_payload['ok'] && !empty($write_payload['data']['tools']) && is_array($write_payload['data']['tools']) ? $write_payload['data']['tools'] : [];
+        $custom_tools = $custom_payload['ok'] && !empty($custom_payload['data']['tools']) && is_array($custom_payload['data']['tools']) ? $custom_payload['data']['tools'] : [];
+
+        $catalog = $this->build_mcp_catalog($read_tools, $write_tools, $custom_tools);
+
+        $editing_tool = [];
+        $existing_name = '';
+        if ($edit_tool_name !== '' && isset($catalog[$edit_tool_name]) && $catalog[$edit_tool_name]['origin'] === 'custom') {
+            $editing_tool = $catalog[$edit_tool_name]['tool'];
+            $existing_name = $edit_tool_name;
+        }
+        // A failed save comes back with the submitted values, so nothing typed is lost
+        $draft_tool = $this->consume_admin_payload('mcp_tool_draft');
+        if (is_array($draft_tool)) {
+            $existing_name = isset($draft_tool['existing_name']) ? (string) $draft_tool['existing_name'] : '';
+            unset($draft_tool['existing_name']);
+            $editing_tool = $draft_tool;
+            $form_requested = true;
+        }
+
+        $test_result = $this->consume_admin_payload('mcp_test_result');
+        if ($selected_tool_name === '' && is_array($test_result) && !empty($test_result['tool_name'])) {
+            $selected_tool_name = (string) $test_result['tool_name'];
+        }
+        // Default to a read tool, so that a hasty click never runs a write
+        if (!isset($catalog[$selected_tool_name])) {
+            $selected_tool_name = '';
+            foreach ($catalog as $name => $entry) {
+                if ($entry['read']) {
+                    $selected_tool_name = (string) $name;
+                    break;
+                }
+            }
+            if ($selected_tool_name === '' && !empty($catalog)) {
+                $selected_tool_name = (string) array_key_first($catalog);
+            }
+        }
+
+        $native_count = 0;
+        $custom_count = 0;
+        $read_count = 0;
+        $custom_hidden = 0;
+        foreach ($catalog as $entry) {
+            if ($entry['origin'] === 'native') {
+                $native_count++;
+            } else {
+                $custom_count++;
+                if (!$entry['read']) {
+                    $custom_hidden++;
+                }
+            }
+            if ($entry['read']) {
+                $read_count++;
+            }
+        }
+        ?>
+        <div class="wrap ide-snippets-admin ide-mcp-page">
+            <?php $this->render_admin_nav('eliodata-snippet-hub-mcp'); ?>
+            <h1><?php esc_html_e('Outils MCP', 'eliodata-snippet-hub'); ?></h1>
+            <hr class="wp-header-end">
+            <p class="ide-mcp-muted"><?php esc_html_e('Les outils que ce site expose aux clients MCP : les natifs gèrent les snippets, les personnalisés exposent des routes REST du site.', 'eliodata-snippet-hub'); ?></p>
+
+            <?php if ($notice && !empty($notice['message'])) : ?>
+                <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
+                    <p><?php echo esc_html($notice['message']); ?></p>
+                </div>
+            <?php endif; ?>
+            <?php foreach ([$read_payload, $write_payload, $custom_payload] as $payload) : ?>
+                <?php if (!$payload['ok']) : ?>
+                    <div class="notice notice-error"><p><?php echo esc_html($payload['message']); ?></p></div>
+                <?php endif; ?>
+            <?php endforeach; ?>
+
+            <div class="ide-snippets-grid">
+                <div class="ide-snippets-card"><strong><?php echo esc_html((string) count($catalog)); ?></strong><?php esc_html_e('Outils au total', 'eliodata-snippet-hub'); ?></div>
+                <div class="ide-snippets-card"><strong><?php echo esc_html((string) $native_count); ?></strong><?php esc_html_e('Natifs', 'eliodata-snippet-hub'); ?></div>
+                <div class="ide-snippets-card"><strong><?php echo esc_html((string) $custom_count); ?></strong><?php esc_html_e('Personnalisés', 'eliodata-snippet-hub'); ?></div>
+                <div class="ide-snippets-card">
+                    <strong><?php echo esc_html((string) $read_count); ?></strong><?php esc_html_e('Visibles en profil lecture', 'eliodata-snippet-hub'); ?>
+                    <?php if ($custom_hidden > 0) : ?>
+                        <span class="ide-mcp-card-note"><?php echo esc_html(sprintf(_n('%d personnalisé masqué', '%d personnalisés masqués', $custom_hidden, 'eliodata-snippet-hub'), $custom_hidden)); ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="ide-mcp-layout">
+                <div class="ide-mcp-stack">
+                    <div class="ide-snippets-panel">
+                        <?php $this->render_mcp_catalog_table($catalog, $selected_tool_name); ?>
+                    </div>
+                    <?php $this->render_mcp_custom_tool_form($editing_tool, $existing_name, $form_requested); ?>
+                    <?php $this->render_mcp_access_panel(); ?>
+                </div>
+                <div class="ide-mcp-stack ide-mcp-aside">
+                    <?php $this->render_mcp_tester_panel($catalog, $selected_tool_name, $test_result); ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
     public function render_edit_page() {
-        if (!current_user_can('manage_options')) {
+        if (!Eliodata_Snippet_Hub_Security::current_user_can_manage()) {
             return;
         }
 
@@ -2637,7 +3814,9 @@ class IDE_Snippets_Bridge {
         $editing = $snippet_id > 0 ? $this->get_native_snippet($snippet_id) : null;
         ?>
         <div class="wrap ide-snippets-admin">
-            <h1><?php esc_html_e('Eliodata Snippet Hub (Native)', 'eliodata-snippet-hub'); ?></h1>
+            <?php $this->render_admin_nav($editing ? 'eliodata-snippet-hub' : 'eliodata-snippet-hub-new'); ?>
+            <h1><?php echo esc_html($editing ? __('Modifier le snippet', 'eliodata-snippet-hub') : __('Nouveau snippet', 'eliodata-snippet-hub')); ?></h1>
+            <hr class="wp-header-end">
 
             <?php if ($notice && !empty($notice['message'])) : ?>
                 <div class="notice notice-<?php echo esc_attr($notice['type'] === 'error' ? 'error' : 'success'); ?> is-dismissible">
