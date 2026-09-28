@@ -1,5 +1,5 @@
 === Eliodata MCP Bridge ===
-Contributors: fgelio, eliodata
+Contributors: fgelio
 Donate link: https://eliodata.com
 Tags: snippets, mcp, rest-api, ide, code
 Requires at least: 5.6
@@ -25,9 +25,11 @@ Eliodata MCP Bridge is a WordPress plugin that combines snippet management and M
 * PHP syntax check before saving, automatic deactivation of snippets that cause a fatal error, and a safe mode.
 * Companion extension support for VS Code, Trae, and compatible IDEs.
 
+The IDE extension (Eliodata WordPress Companion, for VS Code, Trae and compatible editors) is available as a VSIX file on the GitHub releases page. The plugin also works on its own, from the WordPress admin.
+
 Project links:
 
-* WordPress plugin page: https://wordpress.org/plugins/eliodata-snippet-hub/
+* IDE extension and source code: https://github.com/eliodata/eliodata-snippet-hub/releases
 * GitHub repository: https://github.com/eliodata/eliodata-snippet-hub
 
 = English =
@@ -70,7 +72,7 @@ Fonctionnalités principales :
 2. Upload it in WordPress: **Plugins > Add New > Upload Plugin**.
 3. Activate **Eliodata MCP Bridge**.
 4. Generate an Application Password in **Users > Profile**.
-5. Optionally connect a compatible IDE companion with site URL, username, and application password.
+5. Optionally install the IDE extension from https://github.com/eliodata/eliodata-snippet-hub/releases and connect it with the site URL, your username and the application password.
 
 = Français =
 
@@ -78,7 +80,7 @@ Fonctionnalités principales :
 2. Importez-la dans WordPress : **Extensions > Ajouter > Téléverser une extension**.
 3. Activez **Eliodata MCP Bridge**.
 4. Générez un mot de passe d’application dans **Utilisateurs > Profil**.
-5. Connectez si besoin une extension IDE compagnon avec l’URL du site, l’identifiant et le mot de passe d’application.
+5. Installez si besoin l’extension IDE depuis https://github.com/eliodata/eliodata-snippet-hub/releases et connectez-la avec l’URL du site, l’identifiant et le mot de passe d’application.
 
 = Security / Sécurité =
 
