@@ -48,6 +48,7 @@ class SnippetProvider {
             canWriteVaultFromRemote: () => true,
             getStatusMessage: () => 'Ce workspace pilote la synchronisation.'
         };
+        this.warnedUnsynced = new Set();
         this.configManager = new ConfigManager_1.ConfigManager(context);
     }
     getSnippetCachePath(id) {
@@ -82,7 +83,9 @@ class SnippetProvider {
     stripHeaderAndPhpTag(code) {
         let cleaned = code;
         cleaned = cleaned.replace(/^\uFEFF?\s*<\?(?:php)?\s*/i, '');
-        cleaned = cleaned.replace(/^\s*\/\*\*[\s\S]*?\*\/\s*/, '');
+        // Only the header written by the v3 cache format (" * Snippet ID: N"); a doc comment
+        // written by the user is code and must reach WordPress unchanged
+        cleaned = cleaned.replace(/^\s*\/\*\*(?:(?!\*\/)[\s\S])*?\*\s*Snippet ID:\s*\d+[\s\S]*?\*\/\s*/, '');
         cleaned = cleaned.replace(/^\uFEFF?\s*<\?(?:php)?\s*/i, '');
         cleaned = cleaned.replace(/\?>\s*$/, '');
         return cleaned.trim();
@@ -95,7 +98,27 @@ class SnippetProvider {
         if (openDocument?.isDirty) {
             return;
         }
+        // A file changed outside the editor since the last sync keeps its changes: the
+        // server version would silently replace them (see hasUnsyncedLocalChanges).
+        if (this.storage.hasUnsyncedLocalChanges
+            && await this.storage.hasUnsyncedLocalChanges(snippet.id, snippet.code || '')) {
+            this.warnUnsyncedLocalChanges(snippet, filePath);
+            return;
+        }
         await this.storage.write(snippet);
+    }
+    warnUnsyncedLocalChanges(snippet, filePath) {
+        const key = String(snippet.id);
+        if (this.warnedUnsynced.has(key)) {
+            return;
+        }
+        this.warnedUnsynced.add(key);
+        const label = `snippet-${snippet.id}`;
+        vscode.window.showWarningMessage(`${label} a été modifié hors de l’éditeur et diffère de WordPress : la version du serveur ne l’a pas écrasé. Ouvrez-le et enregistrez-le pour le publier.`, 'Ouvrir').then(choice => {
+            if (choice === 'Ouvrir') {
+                vscode.window.showTextDocument(vscode.Uri.file(filePath));
+            }
+        });
     }
     async ensureLocalSnippetFile(snippet) {
         if (!this.storage) {

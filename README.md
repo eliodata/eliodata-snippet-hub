@@ -9,7 +9,7 @@ This repository contains two parts that work together:
 | Part | Folder | Version |
 |---|---|---|
 | **Eliodata MCP Bridge**, WordPress plugin | [`eliodata-snippet-hub/`](eliodata-snippet-hub/) | 4.2.2 |
-| **Eliodata WordPress Companion**, IDE extension | repository root | 4.2.1 |
+| **Eliodata WordPress Companion**, IDE extension | repository root | 4.2.2 |
 
 - The **plugin** runs the snippets on your site, exposes a secure REST API and MCP endpoints, and lets each site define its own MCP tools.
 - The **extension** connects your IDE to one or more sites: edit snippets as local files, sync them on save, and browse or run MCP tools.

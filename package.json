@@ -2,7 +2,7 @@
     "name": "wordpress-snippets-manager",
     "displayName": "%extension.displayName%",
     "description": "%extension.description%",
-    "version": "4.2.1",
+    "version": "4.2.2",
     "publisher": "trae-ai",
     "author": "eliodata.com",
     "icon": "assets/icon.png",

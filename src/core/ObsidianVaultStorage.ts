@@ -120,6 +120,64 @@ export class ObsidianVaultStorage implements SnippetStorage {
         return crypto.createHash('sha256').update(content).digest('hex');
     }
 
+    /** Code as stored in the file, without the opening PHP tag, trimmed. */
+    private static normalizeCode(code: string): string {
+        return String(code || '').replace(/^\uFEFF?\s*<\?(?:php)?\s*/i, '').trim();
+    }
+
+    /**
+     * Local changes that WordPress does not have yet.
+     *
+     * Since 4.2.0, a file changed outside the editor (script, Obsidian, AI agent, git) is no
+     * longer sent to WordPress automatically. The refresh that follows any save rewrites every
+     * snippet file from the server: without this check it silently replaced those files with
+     * the older server version, and the next save in the editor published that older version.
+     *
+     * `local_hash` in the frontmatter is the hash of the code last written from WordPress.
+     * The file has unsynced changes when its code no longer matches that hash AND differs
+     * from the code the server returns now. A file already equal to the server is never held.
+     */
+    public async hasUnsyncedLocalChanges(id: string | number, remoteCode: string): Promise<boolean> {
+        let content: string;
+        try {
+            content = await fs.readFile(this.getSnippetFilePath(id), 'utf8');
+        } catch {
+            return false;
+        }
+        const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        if (!match) {
+            return false;
+        }
+        let frontmatter: any = {};
+        try {
+            frontmatter = yaml.parse(match[1]) || {};
+        } catch {
+            return false;
+        }
+        const baseHash = typeof frontmatter.local_hash === 'string' ? frontmatter.local_hash : '';
+        if (baseHash === '') {
+            return false;
+        }
+        const codeMatch = match[2].match(/```php\n([\s\S]*?)```/);
+        if (!codeMatch) {
+            return false;
+        }
+        // write() stores the code exactly as `<?php\n` + code + `\n`: read back that way,
+        // an untouched file gives `local_hash` even when the code starts or ends with blank
+        // lines. The trimmed form covers files written by other tools.
+        const raw = codeMatch[1];
+        if (raw.startsWith('<?php\n') && raw.endsWith('\n')
+            && this.generateHash(raw.slice('<?php\n'.length, -1)) === baseHash) {
+            return false;
+        }
+        const localCode = ObsidianVaultStorage.normalizeCode(raw);
+        const localHash = this.generateHash(localCode);
+        if (localHash === baseHash) {
+            return false;
+        }
+        return localHash !== this.generateHash(ObsidianVaultStorage.normalizeCode(remoteCode));
+    }
+
     public async write(snippet: Snippet): Promise<string> {
         const filePath = this.getSnippetFilePath(snippet.id);
         
