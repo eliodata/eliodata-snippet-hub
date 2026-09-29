@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.2.2
+## 4.2.3
 
 ### Fixed
 - A snippet file changed outside the editor (script, Obsidian, AI agent, git) was silently replaced by the older server version at the next refresh, which follows any save in the editor. The next save then published that older version. Since 4.2.0 such files are no longer sent automatically, so the refresh must not overwrite them either: a file whose code differs both from its last sync (`local_hash`) and from the server is now kept, with a warning offering to open it. Saving it in the editor publishes it, as before.
